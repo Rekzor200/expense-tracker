@@ -112,6 +112,14 @@ export function AnalyticsPage() {
               type="date"
               value={customStart}
               onChange={(e) => setCustomStart(e.target.value)}
+              onFocus={(e) => {
+                const input = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
+                input.showPicker?.();
+              }}
+              onClick={(e) => {
+                const input = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
+                input.showPicker?.();
+              }}
               className="w-37.5"
             />
             <span className="text-muted-foreground">to</span>
@@ -119,6 +127,14 @@ export function AnalyticsPage() {
               type="date"
               value={customEnd}
               onChange={(e) => setCustomEnd(e.target.value)}
+              onFocus={(e) => {
+                const input = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
+                input.showPicker?.();
+              }}
+              onClick={(e) => {
+                const input = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
+                input.showPicker?.();
+              }}
               className="w-37.5"
             />
           </>
