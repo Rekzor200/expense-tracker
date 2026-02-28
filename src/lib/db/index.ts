@@ -7,9 +7,14 @@ let db: Database | null = null;
 
 export async function getDb(): Promise<Database> {
   if (db) return db;
-  db = await Database.load("sqlite:expense-tracker.db");
-  await runMigrations(db);
-  return db;
+  try {
+    db = await Database.load("sqlite:expense-tracker.db");
+    await runMigrations(db);
+    return db;
+  } catch (err) {
+    db = null;
+    throw new Error(`Failed to open database: ${err instanceof Error ? err.message : err}`);
+  }
 }
 
 async function runMigrations(database: Database): Promise<void> {
@@ -197,33 +202,50 @@ export async function exportAllData(): Promise<{
 }
 
 export async function importAllData(data: {
-  categories: Category[];
-  transactions: Transaction[];
-  receipts: Receipt[];
+  categories?: Category[];
+  transactions?: Transaction[];
+  receipts?: Receipt[];
 }): Promise<void> {
+  const cats = data.categories ?? [];
+  const txns = data.transactions ?? [];
+  const recs = data.receipts ?? [];
+
+  for (const txn of txns) {
+    if (!txn.id || !txn.type || typeof txn.amount !== "number") {
+      throw new Error(`Invalid transaction in backup: ${JSON.stringify(txn).slice(0, 100)}`);
+    }
+  }
+
   const database = await getDb();
 
-  await database.execute("DELETE FROM receipts");
-  await database.execute("DELETE FROM transactions");
-  await database.execute("DELETE FROM categories");
+  await database.execute("BEGIN TRANSACTION");
+  try {
+    await database.execute("DELETE FROM receipts");
+    await database.execute("DELETE FROM transactions");
+    await database.execute("DELETE FROM categories");
 
-  for (const cat of data.categories) {
-    await database.execute(
-      "INSERT INTO categories (id, name, icon, monthlyBudget, createdAt) VALUES ($1, $2, $3, $4, $5)",
-      [cat.id, cat.name, cat.icon, cat.monthlyBudget, cat.createdAt]
-    );
-  }
-  for (const txn of data.transactions) {
-    await database.execute(
-      "INSERT INTO transactions (id, type, amount, currency, categoryId, note, occurredAt, createdAt) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-      [txn.id, txn.type, txn.amount, txn.currency, txn.categoryId, txn.note, txn.occurredAt, txn.createdAt]
-    );
-  }
-  for (const r of data.receipts) {
-    await database.execute(
-      "INSERT INTO receipts (id, transactionId, imagePath, ocrText, parsedJson, createdAt) VALUES ($1, $2, $3, $4, $5, $6)",
-      [r.id, r.transactionId, r.imagePath, r.ocrText, r.parsedJson, r.createdAt]
-    );
+    for (const cat of cats) {
+      await database.execute(
+        "INSERT INTO categories (id, name, icon, monthlyBudget, createdAt) VALUES ($1, $2, $3, $4, $5)",
+        [cat.id, cat.name, cat.icon, cat.monthlyBudget, cat.createdAt]
+      );
+    }
+    for (const txn of txns) {
+      await database.execute(
+        "INSERT INTO transactions (id, type, amount, currency, categoryId, note, occurredAt, createdAt) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        [txn.id, txn.type, txn.amount, txn.currency, txn.categoryId, txn.note, txn.occurredAt, txn.createdAt]
+      );
+    }
+    for (const r of recs) {
+      await database.execute(
+        "INSERT INTO receipts (id, transactionId, imagePath, ocrText, parsedJson, createdAt) VALUES ($1, $2, $3, $4, $5, $6)",
+        [r.id, r.transactionId, r.imagePath, r.ocrText, r.parsedJson, r.createdAt]
+      );
+    }
+    await database.execute("COMMIT");
+  } catch (err) {
+    await database.execute("ROLLBACK");
+    throw err;
   }
 }
 
@@ -244,6 +266,12 @@ export async function exportTransactionsCsv(): Promise<string> {
 }
 
 // --- Sample Data ---
+function makeDate(year: number, month: number, day: number): string {
+  const mm = String(month + 1).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `${year}-${mm}-${dd}T12:00:00.000Z`;
+}
+
 export async function loadSampleData(): Promise<void> {
   const database = await getDb();
   const categories = await database.select<Category[]>("SELECT * FROM categories");
@@ -255,21 +283,21 @@ export async function loadSampleData(): Promise<void> {
   const month = now.getMonth();
 
   const sampleTransactions: Omit<Transaction, "id" | "createdAt">[] = [
-    { type: "INCOME", amount: 8500, currency: "RON", categoryId: null, note: "Salary", occurredAt: new Date(year, month, 1).toISOString() },
-    { type: "EXPENSE", amount: 45.5, currency: "RON", categoryId: catMap.get("Food") || null, note: "Mega Image groceries", occurredAt: new Date(year, month, 2).toISOString() },
-    { type: "EXPENSE", amount: 32, currency: "RON", categoryId: catMap.get("Take-outs") || null, note: "Bolt Food - pizza", occurredAt: new Date(year, month, 3).toISOString() },
-    { type: "EXPENSE", amount: 150, currency: "RON", categoryId: catMap.get("Transport") || null, note: "Fuel", occurredAt: new Date(year, month, 4).toISOString() },
-    { type: "EXPENSE", amount: 55, currency: "RON", categoryId: catMap.get("Subscriptions") || null, note: "Netflix + Spotify", occurredAt: new Date(year, month, 5).toISOString() },
-    { type: "EXPENSE", amount: 1200, currency: "RON", categoryId: catMap.get("Bills") || null, note: "Rent", occurredAt: new Date(year, month, 1).toISOString() },
-    { type: "EXPENSE", amount: 250, currency: "RON", categoryId: catMap.get("Shopping") || null, note: "New shoes", occurredAt: new Date(year, month, 7).toISOString() },
-    { type: "EXPENSE", amount: 89, currency: "RON", categoryId: catMap.get("Health") || null, note: "Pharmacy", occurredAt: new Date(year, month, 8).toISOString() },
-    { type: "EXPENSE", amount: 120, currency: "RON", categoryId: catMap.get("Fun") || null, note: "Cinema + dinner", occurredAt: new Date(year, month, 10).toISOString() },
-    { type: "EXPENSE", amount: 67.8, currency: "RON", categoryId: catMap.get("Food") || null, note: "Lidl weekly shop", occurredAt: new Date(year, month, 12).toISOString() },
-    { type: "INCOME", amount: 500, currency: "RON", categoryId: null, note: "Freelance project", occurredAt: new Date(year, month, 15).toISOString() },
-    { type: "EXPENSE", amount: 35, currency: "RON", categoryId: catMap.get("Take-outs") || null, note: "Tazz - sushi", occurredAt: new Date(year, month, 14).toISOString() },
-    { type: "EXPENSE", amount: 180, currency: "RON", categoryId: catMap.get("Shopping") || null, note: "H&M clothes", occurredAt: new Date(year, month, 16).toISOString() },
-    { type: "EXPENSE", amount: 42, currency: "RON", categoryId: catMap.get("Transport") || null, note: "Uber rides", occurredAt: new Date(year, month, 18).toISOString() },
-    { type: "EXPENSE", amount: 95, currency: "RON", categoryId: catMap.get("Other") || null, note: "Gift for friend", occurredAt: new Date(year, month, 20).toISOString() },
+    { type: "INCOME", amount: 8500, currency: "RON", categoryId: null, note: "Salary", occurredAt: makeDate(year, month, 1) },
+    { type: "EXPENSE", amount: 45.5, currency: "RON", categoryId: catMap.get("Food") || null, note: "Mega Image groceries", occurredAt: makeDate(year, month, 2) },
+    { type: "EXPENSE", amount: 32, currency: "RON", categoryId: catMap.get("Take-outs") || null, note: "Bolt Food - pizza", occurredAt: makeDate(year, month, 3) },
+    { type: "EXPENSE", amount: 150, currency: "RON", categoryId: catMap.get("Transport") || null, note: "Fuel", occurredAt: makeDate(year, month, 4) },
+    { type: "EXPENSE", amount: 55, currency: "RON", categoryId: catMap.get("Subscriptions") || null, note: "Netflix + Spotify", occurredAt: makeDate(year, month, 5) },
+    { type: "EXPENSE", amount: 1200, currency: "RON", categoryId: catMap.get("Bills") || null, note: "Rent", occurredAt: makeDate(year, month, 1) },
+    { type: "EXPENSE", amount: 250, currency: "RON", categoryId: catMap.get("Shopping") || null, note: "New shoes", occurredAt: makeDate(year, month, 7) },
+    { type: "EXPENSE", amount: 89, currency: "RON", categoryId: catMap.get("Health") || null, note: "Pharmacy", occurredAt: makeDate(year, month, 8) },
+    { type: "EXPENSE", amount: 120, currency: "RON", categoryId: catMap.get("Fun") || null, note: "Cinema + dinner", occurredAt: makeDate(year, month, 10) },
+    { type: "EXPENSE", amount: 67.8, currency: "RON", categoryId: catMap.get("Food") || null, note: "Lidl weekly shop", occurredAt: makeDate(year, month, 12) },
+    { type: "INCOME", amount: 500, currency: "RON", categoryId: null, note: "Freelance project", occurredAt: makeDate(year, month, 15) },
+    { type: "EXPENSE", amount: 35, currency: "RON", categoryId: catMap.get("Take-outs") || null, note: "Tazz - sushi", occurredAt: makeDate(year, month, 14) },
+    { type: "EXPENSE", amount: 180, currency: "RON", categoryId: catMap.get("Shopping") || null, note: "H&M clothes", occurredAt: makeDate(year, month, 16) },
+    { type: "EXPENSE", amount: 42, currency: "RON", categoryId: catMap.get("Transport") || null, note: "Uber rides", occurredAt: makeDate(year, month, 18) },
+    { type: "EXPENSE", amount: 95, currency: "RON", categoryId: catMap.get("Other") || null, note: "Gift for friend", occurredAt: makeDate(year, month, 20) },
   ];
 
   for (const txn of sampleTransactions) {

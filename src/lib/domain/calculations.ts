@@ -59,7 +59,7 @@ export function calculateDailyTrend(
 
   const current = new Date(start);
   while (current <= end) {
-    dailyMap.set(current.toISOString().slice(0, 10), 0);
+    dailyMap.set(localDateStr(current), 0);
     current.setDate(current.getDate() + 1);
   }
 
@@ -89,11 +89,19 @@ export function formatCurrency(amount: number, currency = "RON"): string {
   }).format(amount);
 }
 
+/** Format a Date as YYYY-MM-DD using local time (avoids UTC shift). */
+export function localDateStr(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
 export function getMonthRange(year: number, month: number): { start: string; end: string } {
-  const start = new Date(year, month, 1);
-  const end = new Date(year, month + 1, 0);
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const mm = String(month + 1).padStart(2, "0");
   return {
-    start: start.toISOString().slice(0, 10),
-    end: end.toISOString().slice(0, 10),
+    start: `${year}-${mm}-01`,
+    end: `${year}-${mm}-${String(lastDay).padStart(2, "0")}`,
   };
 }

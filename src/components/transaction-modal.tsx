@@ -13,14 +13,25 @@ import { Upload, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { LucideIcon } from "@/components/lucide-icon";
 import { Category, Transaction, TransactionType, ParsedReceipt } from "@/lib/domain/types";
 import { extractFromReceipt } from "@/lib/receipt/ocr";
-import { formatCurrency } from "@/lib/domain/calculations";
+import { formatCurrency, localDateStr } from "@/lib/domain/calculations";
+
+export interface ReceiptData {
+  file: File;
+  ocrResult: ParsedReceipt;
+}
+
+export interface TransactionSaveData {
+  transaction: Omit<Transaction, "id" | "createdAt">;
+  receipt?: ReceiptData;
+}
 
 interface TransactionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   categories: Category[];
-  onSave: (data: Omit<Transaction, "id" | "createdAt">) => Promise<void>;
+  onSave: (data: TransactionSaveData) => Promise<void>;
   editTransaction?: Transaction | null;
+  initialType?: TransactionType;
 }
 
 export function TransactionModal({
@@ -29,15 +40,17 @@ export function TransactionModal({
   categories,
   onSave,
   editTransaction,
+  initialType = "EXPENSE",
 }: TransactionModalProps) {
   const [type, setType] = useState<TransactionType>("EXPENSE");
   const [amount, setAmount] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
   const [note, setNote] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(localDateStr());
   const [saving, setSaving] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrResult, setOcrResult] = useState<ParsedReceipt | null>(null);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [showRawOcr, setShowRawOcr] = useState(false);
   const amountRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -48,20 +61,21 @@ export function TransactionModal({
         setType(editTransaction.type);
         setAmount(String(editTransaction.amount));
         setCategoryId(editTransaction.categoryId || "");
-        setNote(editTransaction.note);
-        setDate(editTransaction.occurredAt.slice(0, 10));
+        setNote(editTransaction.note || "");
+        setDate(editTransaction.occurredAt?.slice(0, 10) || localDateStr());
       } else {
-        setType("EXPENSE");
+        setType(initialType);
         setAmount("");
         setCategoryId("");
         setNote("");
-        setDate(new Date().toISOString().slice(0, 10));
+        setDate(localDateStr());
       }
       setOcrResult(null);
+      setReceiptFile(null);
       setShowRawOcr(false);
       setTimeout(() => amountRef.current?.focus(), 100);
     }
-  }, [open, editTransaction]);
+  }, [open, editTransaction, initialType]);
 
   const handleSave = useCallback(async () => {
     const amt = parseFloat(amount);
@@ -69,18 +83,23 @@ export function TransactionModal({
     setSaving(true);
     try {
       await onSave({
-        type,
-        amount: amt,
-        currency: "RON",
-        categoryId: type === "EXPENSE" ? (categoryId || null) : null,
-        note: note.trim(),
-        occurredAt: new Date(date).toISOString(),
+        transaction: {
+          type,
+          amount: amt,
+          currency: "RON",
+          categoryId: type === "EXPENSE" ? (categoryId || null) : null,
+          note: note.trim(),
+          occurredAt: date + "T12:00:00.000Z",
+        },
+        receipt: receiptFile && ocrResult ? { file: receiptFile, ocrResult } : undefined,
       });
       onOpenChange(false);
+    } catch (err) {
+      console.error("Failed to save transaction:", err);
     } finally {
       setSaving(false);
     }
-  }, [type, amount, categoryId, note, date, onSave, onOpenChange]);
+  }, [type, amount, categoryId, note, date, receiptFile, ocrResult, onSave, onOpenChange]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -98,6 +117,7 @@ export function TransactionModal({
       if (!file) return;
       setOcrLoading(true);
       try {
+        setReceiptFile(file);
         const result = await extractFromReceipt(file);
         setOcrResult(result);
         if (result.total !== null) setAmount(String(result.total));

@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/reactbits/empty-state";
 import { getTransactions, getCategories } from "@/lib/db";
 import {
   calculateMonthSummary, calculateCategorySummaries, calculateDailyTrend,
-  calculatePercentChange, formatCurrency, getMonthRange,
+  calculatePercentChange, formatCurrency, getMonthRange, localDateStr,
 } from "@/lib/domain/calculations";
 import { Category, TransactionWithCategory } from "@/lib/domain/types";
 import {
@@ -29,8 +29,8 @@ type RangeOption = "this_month" | "last_month" | "custom";
 export function AnalyticsPage() {
   const now = new Date();
   const [range, setRange] = useState<RangeOption>("this_month");
-  const [customStart, setCustomStart] = useState(now.toISOString().slice(0, 10));
-  const [customEnd, setCustomEnd] = useState(now.toISOString().slice(0, 10));
+  const [customStart, setCustomStart] = useState(localDateStr(now));
+  const [customEnd, setCustomEnd] = useState(localDateStr(now));
   const [transactions, setTransactions] = useState<TransactionWithCategory[]>([]);
   const [prevTransactions, setPrevTransactions] = useState<TransactionWithCategory[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -50,7 +50,7 @@ export function AnalyticsPage() {
     const diff = e.getTime() - s.getTime();
     const ps = new Date(s.getTime() - diff - 86400000);
     const pe = new Date(s.getTime() - 86400000);
-    return { startDate: ps.toISOString().slice(0, 10), endDate: pe.toISOString().slice(0, 10) };
+    return { startDate: localDateStr(ps), endDate: localDateStr(pe) };
   }, [startDate, endDate]);
 
   useEffect(() => {
@@ -97,7 +97,7 @@ export function AnalyticsPage() {
       {/* Range Picker */}
       <div className="flex flex-wrap items-center gap-3">
         <Select value={range} onValueChange={(v) => setRange(v as RangeOption)}>
-          <SelectTrigger className="w-[160px]">
+          <SelectTrigger className="w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -112,14 +112,14 @@ export function AnalyticsPage() {
               type="date"
               value={customStart}
               onChange={(e) => setCustomStart(e.target.value)}
-              className="w-[150px]"
+              className="w-37.5"
             />
             <span className="text-muted-foreground">to</span>
             <Input
               type="date"
               value={customEnd}
               onChange={(e) => setCustomEnd(e.target.value)}
-              className="w-[150px]"
+              className="w-37.5"
             />
           </>
         )}
@@ -212,10 +212,12 @@ export function AnalyticsPage() {
                         labelFormatter={(d) => new Date(String(d)).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                         contentStyle={{
                           borderRadius: "8px",
-                          border: "1px solid hsl(var(--border))",
-                          backgroundColor: "hsl(var(--popover))",
-                          color: "hsl(var(--popover-foreground))",
+                          border: "1px solid var(--color-border)",
+                          backgroundColor: "var(--color-popover)",
+                          color: "var(--color-popover-foreground)",
                         }}
+                        itemStyle={{ color: "var(--color-popover-foreground)" }}
+                        labelStyle={{ color: "var(--color-muted-foreground)" }}
                       />
                       <Bar dataKey="amount" fill="hsl(12, 76%, 61%)" radius={[4, 4, 0, 0]} />
                     </BarChart>
@@ -251,12 +253,18 @@ export function AnalyticsPage() {
                         </Pie>
                         <RechartsTooltip
                           formatter={(value) => formatCurrency(value as number)}
+                          allowEscapeViewBox={{ x: true, y: true }}
+                          wrapperStyle={{ zIndex: 50, pointerEvents: "none" }}
                           contentStyle={{
                             borderRadius: "8px",
-                            border: "1px solid hsl(var(--border))",
-                            backgroundColor: "hsl(var(--popover))",
-                            color: "hsl(var(--popover-foreground))",
+                            border: "1px solid var(--color-border)",
+                            backgroundColor: "var(--color-popover)",
+                            color: "var(--color-popover-foreground)",
+                            fontSize: "13px",
+                            padding: "8px 12px",
                           }}
+                          itemStyle={{ color: "var(--color-popover-foreground)" }}
+                          labelStyle={{ color: "var(--color-muted-foreground)" }}
                         />
                       </PieChart>
                     </ResponsiveContainer>
@@ -286,3 +294,4 @@ export function AnalyticsPage() {
     </div>
   );
 }
+

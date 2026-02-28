@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -10,6 +11,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
@@ -22,14 +24,24 @@ const NAV_ITEMS = [
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 
+const MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
 interface LayoutProps {
   monthLabel: string;
+  currentYear: number;
+  currentMonth: number;
   onPrevMonth: () => void;
   onNextMonth: () => void;
+  onGoToMonth: (year: number, month: number) => void;
   onAddClick: () => void;
 }
 
-export function Layout({ monthLabel, onPrevMonth, onNextMonth, onAddClick }: LayoutProps) {
+export function Layout({ monthLabel, currentYear, currentMonth, onPrevMonth, onNextMonth, onGoToMonth, onAddClick }: LayoutProps) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerYear, setPickerYear] = useState(currentYear);
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex h-screen overflow-hidden bg-background">
@@ -59,7 +71,7 @@ export function Layout({ monthLabel, onPrevMonth, onNextMonth, onAddClick }: Lay
               </Tooltip>
             ))}
           </nav>
-          <div className="text-[10px] text-muted-foreground select-none">v0.1</div>
+          <div className="text-[10px] text-muted-foreground select-none">v0.2.0</div>
         </aside>
 
         {/* Main */}
@@ -70,9 +82,40 @@ export function Layout({ monthLabel, onPrevMonth, onNextMonth, onAddClick }: Lay
               <Button variant="ghost" size="icon" onClick={onPrevMonth}>
                 <ChevronLeft className="w-4 h-4" />
               </Button>
-              <span className="text-sm font-medium min-w-[140px] text-center select-none">
-                {monthLabel}
-              </span>
+              <Popover open={pickerOpen} onOpenChange={(open) => { setPickerOpen(open); if (open) setPickerYear(currentYear); }}>
+                <PopoverTrigger asChild>
+                  <button className="text-sm font-medium min-w-35 text-center select-none rounded-md px-3 py-1.5 hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer">
+                    {monthLabel}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-3" align="start">
+                  <div className="flex items-center justify-between mb-3">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setPickerYear((y) => y - 1)}>
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <span className="text-sm font-semibold">{pickerYear}</span>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setPickerYear((y) => y + 1)}>
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {MONTHS.map((name, i) => (
+                      <button
+                        key={name}
+                        onClick={() => { onGoToMonth(pickerYear, i); setPickerOpen(false); }}
+                        className={cn(
+                          "rounded-md px-2 py-1.5 text-sm transition-colors cursor-pointer",
+                          currentYear === pickerYear && currentMonth === i
+                            ? "bg-primary text-primary-foreground"
+                            : "hover:bg-accent hover:text-accent-foreground"
+                        )}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
               <Button variant="ghost" size="icon" onClick={onNextMonth}>
                 <ChevronRight className="w-4 h-4" />
               </Button>
@@ -99,3 +142,4 @@ export function Layout({ monthLabel, onPrevMonth, onNextMonth, onAddClick }: Lay
     </TooltipProvider>
   );
 }
+

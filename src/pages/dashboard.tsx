@@ -26,9 +26,10 @@ const CHART_COLORS = [
 interface DashboardProps {
   startDate: string;
   endDate: string;
+  refreshKey?: number;
 }
 
-export function DashboardPage({ startDate, endDate }: DashboardProps) {
+export function DashboardPage({ startDate, endDate, refreshKey }: DashboardProps) {
   const [transactions, setTransactions] = useState<TransactionWithCategory[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +45,7 @@ export function DashboardPage({ startDate, endDate }: DashboardProps) {
       setCategories(cats);
       setLoading(false);
     })();
-  }, [startDate, endDate]);
+  }, [startDate, endDate, refreshKey]);
 
   const summary = useMemo(() => calculateMonthSummary(transactions), [transactions]);
   const catSummaries = useMemo(
@@ -137,12 +138,18 @@ export function DashboardPage({ startDate, endDate }: DashboardProps) {
                         </Pie>
                         <RechartsTooltip
                           formatter={(value) => formatCurrency(value as number)}
+                          allowEscapeViewBox={{ x: true, y: true }}
+                          wrapperStyle={{ zIndex: 50, pointerEvents: "none" }}
                           contentStyle={{
                             borderRadius: "8px",
-                            border: "1px solid hsl(var(--border))",
-                            backgroundColor: "hsl(var(--popover))",
-                            color: "hsl(var(--popover-foreground))",
+                            border: "1px solid var(--color-border)",
+                            backgroundColor: "var(--color-popover)",
+                            color: "var(--color-popover-foreground)",
+                            fontSize: "13px",
+                            padding: "8px 12px",
                           }}
+                          itemStyle={{ color: "var(--color-popover-foreground)" }}
+                          labelStyle={{ color: "var(--color-muted-foreground)" }}
                         />
                       </PieChart>
                     </ResponsiveContainer>

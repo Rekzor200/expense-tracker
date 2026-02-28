@@ -10,10 +10,11 @@ import {
 import { LucideIcon } from "@/components/lucide-icon";
 import { EmptyState } from "@/components/reactbits/empty-state";
 import { FadeIn } from "@/components/reactbits/fade-in";
-import { TransactionModal } from "@/components/transaction-modal";
+import { TransactionModal, TransactionSaveData } from "@/components/transaction-modal";
 import {
-  getTransactions, getCategories, createTransaction, updateTransaction, deleteTransaction,
+  getTransactions, getCategories, createTransaction, createReceipt, updateTransaction, deleteTransaction,
 } from "@/lib/db";
+import { saveReceiptImage } from "@/lib/receipt/storage";
 import { formatCurrency } from "@/lib/domain/calculations";
 import { Category, Transaction, TransactionWithCategory } from "@/lib/domain/types";
 import { Search, Pencil, Trash2, ArrowLeftRight } from "lucide-react";
@@ -21,9 +22,10 @@ import { Search, Pencil, Trash2, ArrowLeftRight } from "lucide-react";
 interface TransactionsPageProps {
   startDate: string;
   endDate: string;
+  refreshKey?: number;
 }
 
-export function TransactionsPage({ startDate, endDate }: TransactionsPageProps) {
+export function TransactionsPage({ startDate, endDate, refreshKey }: TransactionsPageProps) {
   const [transactions, setTransactions] = useState<TransactionWithCategory[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [search, setSearch] = useState("");
@@ -49,16 +51,25 @@ export function TransactionsPage({ startDate, endDate }: TransactionsPageProps) 
     setTransactions(txns);
     setCategories(cats);
     setLoading(false);
-  }, [startDate, endDate, filterType, filterCategory, search]);
+  }, [startDate, endDate, filterType, filterCategory, search, refreshKey]);
 
   useEffect(() => { load(); }, [load]);
 
   const handleSave = useCallback(
-    async (data: Omit<Transaction, "id" | "createdAt">) => {
+    async ({ transaction, receipt }: TransactionSaveData) => {
       if (editTxn) {
-        await updateTransaction(editTxn.id, data);
+        await updateTransaction(editTxn.id, transaction);
       } else {
-        await createTransaction(data);
+        const txn = await createTransaction(transaction);
+        if (receipt) {
+          const imagePath = await saveReceiptImage(receipt.file);
+          await createReceipt({
+            transactionId: txn.id,
+            imagePath,
+            ocrText: receipt.ocrResult.rawText,
+            parsedJson: JSON.stringify(receipt.ocrResult),
+          });
+        }
       }
       setEditTxn(null);
       await load();
@@ -76,7 +87,7 @@ export function TransactionsPage({ startDate, endDate }: TransactionsPageProps) 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative flex-1 min-w-50">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search transactions..."
@@ -86,7 +97,7 @@ export function TransactionsPage({ startDate, endDate }: TransactionsPageProps) 
           />
         </div>
         <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-[130px]">
+          <SelectTrigger className="w-32.5">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -96,7 +107,7 @@ export function TransactionsPage({ startDate, endDate }: TransactionsPageProps) 
           </SelectContent>
         </Select>
         <Select value={filterCategory} onValueChange={setFilterCategory}>
-          <SelectTrigger className="w-[160px]">
+          <SelectTrigger className="w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -214,3 +225,4 @@ export function TransactionsPage({ startDate, endDate }: TransactionsPageProps) 
     </div>
   );
 }
+

@@ -22,11 +22,16 @@ export function useMonth() {
     else setMonth((m) => m + 1);
   }, [month]);
 
+  const goTo = useCallback((y: number, m: number) => {
+    setYear(y);
+    setMonth(m);
+  }, []);
+
   const goToToday = useCallback(() => {
     const n = new Date();
     setYear(n.getFullYear());
     setMonth(n.getMonth());
   }, []);
 
-  return { year, month, range, label, prev, next, goToToday };
+  return { year, month, range, label, prev, next, goTo, goToToday };
 }
