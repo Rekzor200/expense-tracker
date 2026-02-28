@@ -6,6 +6,7 @@ import { CommandPalette } from "@/components/command-palette";
 import { DashboardPage } from "@/pages/dashboard";
 import { TransactionsPage } from "@/pages/transactions";
 import { CategoriesPage } from "@/pages/categories";
+import { PortfolioPage } from "@/pages/portfolio";
 import { AnalyticsPage } from "@/pages/analytics";
 import { SettingsPage } from "@/pages/settings";
 import { useMonth } from "@/hooks/use-month";
@@ -14,6 +15,7 @@ import { getDb, getCategories, createTransaction, createReceipt } from "@/lib/db
 import { saveReceiptImage } from "@/lib/receipt/storage";
 import { TransactionSaveData } from "@/components/transaction-modal";
 import { Category, TransactionType } from "@/lib/domain/types";
+import { refreshPortfolioPrices } from "@/lib/portfolio";
 
 export default function App() {
   const month = useMonth();
@@ -29,6 +31,9 @@ export default function App() {
     (async () => {
       try {
         await getDb();
+        await refreshPortfolioPrices().catch(() => {
+          // offline is expected; cache remains available
+        });
         setDbReady(true);
         setCategories(await getCategories());
       } catch (err) {
@@ -126,6 +131,7 @@ export default function App() {
             element={<TransactionsPage startDate={month.range.start} endDate={month.range.end} refreshKey={refreshKey} />}
           />
           <Route path="categories" element={<CategoriesPage />} />
+          <Route path="portfolio" element={<PortfolioPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>

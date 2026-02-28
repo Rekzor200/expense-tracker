@@ -1,4 +1,5 @@
 export type TransactionType = "EXPENSE" | "INCOME";
+export type PortfolioSymbol = "BTC" | "ETH" | "SOL";
 
 export interface Category {
   id: string;
@@ -55,6 +56,32 @@ export interface ParsedReceipt {
   date: string | null;
   rawText: string;
 }
+
+export interface Holding {
+  symbol: PortfolioSymbol;
+  amount: number;
+  updatedAt: string;
+}
+
+export interface PriceCache {
+  symbol: PortfolioSymbol;
+  currency: "USD" | "EUR";
+  price: number;
+  change24h: number | null;
+  updatedAt: string;
+  source: string;
+}
+
+export interface FxCache {
+  base: "EUR";
+  quote: "RON";
+  rate: number;
+  rateDate: string;
+  updatedAt: string;
+  source: string;
+}
+
+export const PORTFOLIO_SYMBOLS: PortfolioSymbol[] = ["BTC", "ETH", "SOL"];
 
 export const DEFAULT_CATEGORIES: Omit<Category, "id" | "createdAt">[] = [
   { name: "Subscriptions", icon: "repeat", monthlyBudget: null },

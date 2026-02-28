@@ -1,7 +1,18 @@
 import Database from "@tauri-apps/plugin-sql";
 import { CREATE_TABLES, SCHEMA_VERSION } from "./schema";
 import { v4 as uuid } from "uuid";
-import { Category, Transaction, TransactionWithCategory, Receipt, DEFAULT_CATEGORIES } from "../domain/types";
+import {
+  Category,
+  Transaction,
+  TransactionWithCategory,
+  Receipt,
+  DEFAULT_CATEGORIES,
+  Holding,
+  PortfolioSymbol,
+  PORTFOLIO_SYMBOLS,
+  PriceCache,
+  FxCache,
+} from "../domain/types";
 
 let db: Database | null = null;
 
@@ -32,7 +43,20 @@ async function runMigrations(database: Database): Promise<void> {
       String(SCHEMA_VERSION),
     ]);
     await seedDefaultCategories(database);
+    await seedPortfolioHoldings(database);
+    return;
   }
+
+  const currentVersion = Number(meta[0]?.value || 1);
+  if (currentVersion < 2) {
+    await seedPortfolioHoldings(database);
+    await database.execute("UPDATE schema_meta SET value = $1 WHERE key = 'version'", [
+      String(SCHEMA_VERSION),
+    ]);
+    return;
+  }
+
+  await seedPortfolioHoldings(database);
 }
 
 async function seedDefaultCategories(database: Database): Promise<void> {
@@ -43,6 +67,15 @@ async function seedDefaultCategories(database: Database): Promise<void> {
     await database.execute(
       "INSERT INTO categories (id, name, icon, monthlyBudget, createdAt) VALUES ($1, $2, $3, $4, $5)",
       [uuid(), cat.name, cat.icon, cat.monthlyBudget, new Date().toISOString()]
+    );
+  }
+}
+
+async function seedPortfolioHoldings(database: Database): Promise<void> {
+  for (const symbol of PORTFOLIO_SYMBOLS) {
+    await database.execute(
+      "INSERT OR IGNORE INTO holdings (symbol, amount, updatedAt) VALUES ($1, $2, $3)",
+      [symbol, 0, new Date().toISOString()]
     );
   }
 }
@@ -188,27 +221,102 @@ export async function getReceiptByTransaction(transactionId: string): Promise<Re
   return results[0] || null;
 }
 
+// --- Portfolio ---
+export async function getHoldings(): Promise<Holding[]> {
+  const database = await getDb();
+  const rows = await database.select<Holding[]>("SELECT * FROM holdings ORDER BY symbol");
+  return rows;
+}
+
+export async function upsertHolding(symbol: PortfolioSymbol, amount: number): Promise<void> {
+  const database = await getDb();
+  await database.execute(
+    `INSERT INTO holdings (symbol, amount, updatedAt)
+     VALUES ($1, $2, $3)
+     ON CONFLICT(symbol) DO UPDATE SET amount = excluded.amount, updatedAt = excluded.updatedAt`,
+    [symbol, amount, new Date().toISOString()]
+  );
+}
+
+export async function getPriceCache(): Promise<PriceCache[]> {
+  const database = await getDb();
+  return database.select<PriceCache[]>("SELECT * FROM price_cache ORDER BY symbol, currency");
+}
+
+export async function upsertPriceCache(rows: Omit<PriceCache, "updatedAt">[]): Promise<void> {
+  if (rows.length === 0) return;
+  const database = await getDb();
+  const updatedAt = new Date().toISOString();
+  for (const row of rows) {
+    await database.execute(
+      `INSERT INTO price_cache (symbol, currency, price, change24h, updatedAt, source)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT(symbol, currency) DO UPDATE SET
+         price = excluded.price,
+         change24h = excluded.change24h,
+         updatedAt = excluded.updatedAt,
+         source = excluded.source`,
+      [row.symbol, row.currency, row.price, row.change24h, updatedAt, row.source]
+    );
+  }
+}
+
+export async function getFxCache(base = "EUR", quote = "RON"): Promise<FxCache | null> {
+  const database = await getDb();
+  const rows = await database.select<FxCache[]>(
+    "SELECT * FROM fx_cache WHERE base = $1 AND quote = $2 LIMIT 1",
+    [base, quote]
+  );
+  return rows[0] || null;
+}
+
+export async function upsertFxCache(data: Omit<FxCache, "updatedAt">): Promise<void> {
+  const database = await getDb();
+  await database.execute(
+    `INSERT INTO fx_cache (base, quote, rate, rateDate, updatedAt, source)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT(base, quote) DO UPDATE SET
+       rate = excluded.rate,
+       rateDate = excluded.rateDate,
+       updatedAt = excluded.updatedAt,
+       source = excluded.source`,
+    [data.base, data.quote, data.rate, data.rateDate, new Date().toISOString(), data.source]
+  );
+}
+
 // --- Backup ---
 export async function exportAllData(): Promise<{
   categories: Category[];
   transactions: Transaction[];
   receipts: Receipt[];
+  holdings: Holding[];
+  priceCache: PriceCache[];
+  fxCache: FxCache[];
 }> {
   const database = await getDb();
   const categories = await database.select<Category[]>("SELECT * FROM categories");
   const transactions = await database.select<Transaction[]>("SELECT * FROM transactions");
   const receipts = await database.select<Receipt[]>("SELECT * FROM receipts");
-  return { categories, transactions, receipts };
+  const holdings = await database.select<Holding[]>("SELECT * FROM holdings");
+  const priceCache = await database.select<PriceCache[]>("SELECT * FROM price_cache");
+  const fxCache = await database.select<FxCache[]>("SELECT * FROM fx_cache");
+  return { categories, transactions, receipts, holdings, priceCache, fxCache };
 }
 
 export async function importAllData(data: {
   categories?: Category[];
   transactions?: Transaction[];
   receipts?: Receipt[];
+  holdings?: Holding[];
+  priceCache?: PriceCache[];
+  fxCache?: FxCache[];
 }): Promise<void> {
   const cats = data.categories ?? [];
   const txns = data.transactions ?? [];
   const recs = data.receipts ?? [];
+  const holdings = data.holdings ?? [];
+  const priceCache = data.priceCache ?? [];
+  const fxCache = data.fxCache ?? [];
 
   for (const txn of txns) {
     if (!txn.id || !txn.type || typeof txn.amount !== "number") {
@@ -223,6 +331,9 @@ export async function importAllData(data: {
     await database.execute("DELETE FROM receipts");
     await database.execute("DELETE FROM transactions");
     await database.execute("DELETE FROM categories");
+    await database.execute("DELETE FROM holdings");
+    await database.execute("DELETE FROM price_cache");
+    await database.execute("DELETE FROM fx_cache");
 
     for (const cat of cats) {
       await database.execute(
@@ -240,6 +351,28 @@ export async function importAllData(data: {
       await database.execute(
         "INSERT INTO receipts (id, transactionId, imagePath, ocrText, parsedJson, createdAt) VALUES ($1, $2, $3, $4, $5, $6)",
         [r.id, r.transactionId, r.imagePath, r.ocrText, r.parsedJson, r.createdAt]
+      );
+    }
+    for (const h of holdings) {
+      if (!PORTFOLIO_SYMBOLS.includes(h.symbol)) continue;
+      await database.execute(
+        "INSERT INTO holdings (symbol, amount, updatedAt) VALUES ($1, $2, $3)",
+        [h.symbol, h.amount, h.updatedAt]
+      );
+    }
+    await seedPortfolioHoldings(database);
+    for (const p of priceCache) {
+      if (!PORTFOLIO_SYMBOLS.includes(p.symbol)) continue;
+      if (p.currency !== "USD" && p.currency !== "EUR") continue;
+      await database.execute(
+        "INSERT INTO price_cache (symbol, currency, price, change24h, updatedAt, source) VALUES ($1, $2, $3, $4, $5, $6)",
+        [p.symbol, p.currency, p.price, p.change24h, p.updatedAt, p.source]
+      );
+    }
+    for (const fx of fxCache) {
+      await database.execute(
+        "INSERT INTO fx_cache (base, quote, rate, rateDate, updatedAt, source) VALUES ($1, $2, $3, $4, $5, $6)",
+        [fx.base, fx.quote, fx.rate, fx.rateDate, fx.updatedAt, fx.source]
       );
     }
     await database.execute("COMMIT");

@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Command } from "cmdk";
 import {
   LayoutDashboard, ArrowLeftRight, Tags, BarChart3, Settings,
-  Plus, Search,
+  Plus, Search, Coins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -15,9 +15,11 @@ interface CommandPaletteProps {
 export function CommandPalette({ onAddExpense, onAddIncome }: CommandPaletteProps) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (location.pathname !== "/") return;
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         setOpen((o) => !o);
@@ -25,7 +27,13 @@ export function CommandPalette({ onAddExpense, onAddIncome }: CommandPaletteProp
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, []);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (location.pathname !== "/" && open) {
+      setOpen(false);
+    }
+  }, [location.pathname, open]);
 
   const runAction = useCallback(
     (action: () => void) => {
@@ -88,6 +96,10 @@ export function CommandPalette({ onAddExpense, onAddIncome }: CommandPaletteProp
               <CommandItem onSelect={() => runAction(() => navigate("/categories"))}>
                 <Tags className="w-4 h-4 mr-2" />
                 Categories
+              </CommandItem>
+              <CommandItem onSelect={() => runAction(() => navigate("/portfolio"))}>
+                <Coins className="w-4 h-4 mr-2" />
+                Portfolio
               </CommandItem>
               <CommandItem onSelect={() => runAction(() => navigate("/analytics"))}>
                 <BarChart3 className="w-4 h-4 mr-2" />

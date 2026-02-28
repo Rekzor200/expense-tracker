@@ -5,6 +5,7 @@ import {
   ArrowLeftRight,
   Tags,
   BarChart3,
+  Coins,
   Settings,
   Plus,
   ChevronLeft,
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/transactions", icon: ArrowLeftRight, label: "Transactions" },
   { to: "/categories", icon: Tags, label: "Categories" },
+  { to: "/portfolio", icon: Coins, label: "Portfolio" },
   { to: "/analytics", icon: BarChart3, label: "Analytics" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
@@ -50,6 +52,8 @@ export function Layout({ monthLabel, currentYear, currentMonth, onPrevMonth, onN
   const [monthHealth, setMonthHealth] = useState<Record<number, MonthHealth>>({});
   const showMonthControls =
     location.pathname === "/" || location.pathname.startsWith("/transactions");
+  const showAddButton = location.pathname === "/";
+  const showCommandHint = location.pathname === "/";
 
   useEffect(() => {
     if (!pickerOpen) return;
@@ -129,7 +133,7 @@ export function Layout({ monthLabel, currentYear, currentMonth, onPrevMonth, onN
               </Tooltip>
             ))}
           </nav>
-          <div className="text-[10px] text-muted-foreground select-none">v0.2.0</div>
+          <div className="text-[10px] text-muted-foreground select-none">v0.3.0</div>
         </aside>
 
         {/* Main */}
@@ -185,14 +189,20 @@ export function Layout({ monthLabel, currentYear, currentMonth, onPrevMonth, onN
             )}
 
             <div className="flex items-center gap-2">
-              <kbd className="hidden sm:inline-flex items-center gap-1 rounded border bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
-                Ctrl+K
-              </kbd>
-              <Separator orientation="vertical" className="h-6" />
-              <Button size="sm" onClick={onAddClick} className="gap-1.5">
-                <Plus className="w-4 h-4" />
-                Add
-              </Button>
+              {showCommandHint ? (
+                <kbd className="hidden sm:inline-flex items-center gap-1 rounded border bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                  Ctrl+K
+                </kbd>
+              ) : null}
+              {showAddButton ? (
+                <>
+                  <Separator orientation="vertical" className="h-6" />
+                  <Button size="sm" onClick={onAddClick} className="gap-1.5">
+                    <Plus className="w-4 h-4" />
+                    Add
+                  </Button>
+                </>
+              ) : null}
             </div>
           </header>
 
@@ -205,4 +215,5 @@ export function Layout({ monthLabel, currentYear, currentMonth, onPrevMonth, onN
     </TooltipProvider>
   );
 }
+
 

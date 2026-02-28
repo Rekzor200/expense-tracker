@@ -1,82 +1,103 @@
-# Expense Tracker
+# Expense Tracker v0.3.0
 
-A Windows desktop app for tracking personal expenses and income. Built with Tauri v2, React, TypeScript, and SQLite.
+A modern Windows desktop app for personal finance visibility.
 
-## Features
+Track spending, income, receipts, and your crypto portfolio in one place, with local-first storage and a fast desktop UX.
 
-- Track expenses and income with categories
-- Dashboard with monthly summary, charts, and budget progress
-- Receipt upload with local OCR (tesseract.js — no cloud required)
-- Analytics with daily trends, category breakdowns, and period comparisons
-- CSV export and JSON backup/restore
-- Command palette (Ctrl+K) for quick actions
-- Light/dark theme
-- Fully offline — all data stored locally in SQLite
+## Why This App
+
+- Built for speed: quick capture, clear monthly snapshots, practical analytics.
+- Built for privacy: your data stays on your machine.
+- Built for reliability: offline-first behavior with local caching and backup/restore.
+
+## Highlights
+
+- Expense and income tracking with categories and budgets.
+- Dashboard with monthly totals, net balance, category breakdown, and budget signals.
+- Transactions workspace with search, filters, edit/delete, and fast entry modal.
+- Receipt OCR flow (local extraction via `tesseract.js`) with review before save.
+- Analytics page with period comparisons and trend charts.
+- Crypto Portfolio page (BTC, ETH, SOL):
+  - Manual holdings input
+  - Cached market pricing (USD/EUR) and EUR->RON conversion
+  - USD/RON valuation toggle
+  - Stale-data signaling for offline scenarios
+- JSON full backup/restore and CSV export.
+- Dark/light theme and polished desktop UI.
 
 ## Tech Stack
 
-- **Desktop**: Tauri v2 (Rust backend, WebView frontend)
-- **Frontend**: React 19, TypeScript 5.8, Vite 7
-- **Styling**: Tailwind CSS v4, shadcn/ui (Radix primitives)
-- **Charts**: Recharts
-- **Database**: SQLite via tauri-plugin-sql
-- **OCR**: tesseract.js v7 (Romanian + English)
-- **Currency**: RON (Romanian Leu)
+- Desktop shell: `Tauri v2` (Rust)
+- Frontend: `React 19` + `TypeScript` + `Vite`
+- Styling/UI: `Tailwind CSS v4` + `shadcn/ui` + `Radix`
+- Charts: `Recharts`
+- Storage: `SQLite` via `@tauri-apps/plugin-sql`
+- OCR: `tesseract.js`
 
-## Prerequisites
+## Windows-Only Prerequisites
 
-- **Node.js** 18+
-- **Rust** (install via [rustup](https://rustup.rs/))
-- **Visual Studio Build Tools 2022** with "Desktop development with C++" workload
-  - If C: drive is low on space, install to another drive:
-    ```
-    vs_BuildTools.exe --installPath "E:\VS\2022\BuildTools"
-    ```
+- Node.js `18+`
+- Rust (`rustup`)
+- Visual Studio Build Tools 2022 with **Desktop development with C++**
 
-## Setup
+Optional custom install path for Build Tools:
 
 ```bash
-# Clone and install dependencies
-git clone <repo-url>
-cd expense-tracker
+vs_BuildTools.exe --installPath "E:\VS\2022\BuildTools"
+```
+
+## Run Locally
+
+```bash
+# install dependencies
 npm install
 
-# Run in development mode (opens Tauri window)
+# run desktop app in development
 npm run tauri dev
 
-# Run tests
+# run unit tests
 npm test
 
-# Build for production (creates installer in src-tauri/target/release/bundle/)
+# build production installer (MSI/NSIS)
 npm run tauri build
 ```
 
-## Project Structure
+## Data Storage and Privacy
 
-```
+All app data is stored locally under:
+
+- `%APPDATA%/com.messiah.expense-tracker/`
+- SQLite database: `expense-tracker.db`
+- Receipt images: `receipts/`
+
+No wallet connections and no cloud sync in this MVP.
+
+## Project Layout
+
+```text
 src/
-  components/       # React components (ui/, reactbits/, layout, modals)
-  pages/            # Dashboard, Transactions, Categories, Analytics, Settings
-  hooks/            # useMonth, useTheme
+  components/
+  pages/              # dashboard, transactions, categories, portfolio, analytics, settings
+  hooks/
   lib/
-    db/             # SQLite schema, migrations, CRUD operations
-    domain/         # Types, calculations, currency formatting
-    receipt/        # OCR extraction, receipt text parser, image storage
+    db/               # schema, migrations, queries
+    domain/           # shared types and calculations
+    receipt/          # OCR + receipt image handling
+    portfolio/        # crypto/FX fetch + cache + portfolio snapshot logic
 src-tauri/
-  src/              # Rust backend (plugin registration)
-  capabilities/     # Tauri v2 permission scoping
+  src/                # Rust runtime + commands
+  capabilities/       # Tauri v2 permission model
 ```
-
-## Data Storage
-
-All data is stored locally in SQLite at Tauri's app data directory:
-- **Windows**: `%APPDATA%/com.messiah.expense-tracker/`
-- Database: `expense-tracker.db`
-- Receipt images: `receipts/` subdirectory
 
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
-|----------|--------|
-| Ctrl+K | Open command palette |
-| Enter | Save transaction (when modal is open) |
+| --- | --- |
+| Ctrl+K | Open command palette (Dashboard only) |
+| Enter | Save in focused modal form |
+
+## Roadmap (Near Term)
+
+- Stronger portfolio source redundancy for price feeds.
+- Expanded validation and test coverage around backup/import.
+- Additional insights and automation for recurring patterns.
