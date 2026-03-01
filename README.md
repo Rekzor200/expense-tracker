@@ -58,9 +58,62 @@ npm run tauri dev
 # run unit tests
 npm test
 
-# build production installer (MSI/NSIS)
+# build production installer (NSIS + updater artifacts)
 npm run tauri build
 ```
+
+## Auto-Updates (Windows)
+
+The desktop app ships with Tauri Updater using GitHub Releases metadata:
+
+- Endpoint: `https://github.com/Rekzor200/expense-tracker/releases/latest/download/latest.json`
+- Update checks are user-controlled from **Settings -> Updates**
+- Optional startup auto-check (default OFF), throttled to max once every 24 hours
+- Updates are never auto-installed without user confirmation
+
+## Releasing (GitHub Actions, Automated)
+
+### 1) One-Time Setup
+
+Generate minisign keys (local machine, never commit private key):
+
+```bash
+npm run tauri signer generate
+```
+
+Add repository secrets in GitHub:
+
+- `TAURI_SIGNING_PRIVATE_KEY`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (optional, if key is password protected)
+
+In GitHub repository settings, ensure Actions workflow permissions are:
+
+- **Read and write permissions**
+
+### 2) Publish a Release
+
+1. Bump version in:
+   - `package.json`
+   - `src-tauri/Cargo.toml`
+   - `src-tauri/tauri.conf.json`
+2. Create a SemVer tag:
+   - `git tag vX.Y.Z`
+3. Push the tag:
+   - `git push origin vX.Y.Z`
+
+The workflow `.github/workflows/release.yml` will:
+
+- build on `windows-latest`
+- produce NSIS bundle + updater artifacts/signatures
+- publish a GitHub Release with `latest.json`
+
+### 3) How Clients Discover Updates
+
+Running apps check:
+
+- `releases/latest/download/latest.json`
+
+When a newer signed release exists, users can install it from the app and relaunch automatically.
 
 ## Data Storage and Privacy
 

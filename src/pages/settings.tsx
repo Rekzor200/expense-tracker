@@ -1,29 +1,70 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { FadeIn } from "@/components/reactbits/fade-in";
 import { useTheme } from "@/hooks/use-theme";
-import { exportAllData, importAllData, exportTransactionsCsv, loadSampleData } from "@/lib/db";
+import { exportAllData, importAllData, exportTransactionsCsv, getSetting, loadSampleData, setSetting } from "@/lib/db";
+import { AvailableUpdate, checkForUpdates, installUpdateAndRelaunch, isTauriRuntime } from "@/lib/updater";
 import { Download, Upload, Database, FolderOpen, Loader2, Sun, Moon } from "lucide-react";
 
 interface SettingsPageProps {
   portfolioEnabled: boolean;
   portfolioLoading: boolean;
   onPortfolioEnabledChange: (next: boolean) => Promise<void>;
+  autoUpdateEnabled: boolean;
+  autoUpdateLoading: boolean;
+  onAutoUpdateEnabledChange: (next: boolean) => Promise<void>;
 }
 
-export function SettingsPage({ portfolioEnabled, portfolioLoading, onPortfolioEnabledChange }: SettingsPageProps) {
+const AUTO_UPDATE_LAST_CHECKED_KEY = "auto_update_last_checked_at";
+
+export function SettingsPage({
+  portfolioEnabled,
+  portfolioLoading,
+  onPortfolioEnabledChange,
+  autoUpdateEnabled,
+  autoUpdateLoading,
+  onAutoUpdateEnabledChange,
+}: SettingsPageProps) {
   const { theme, setTheme } = useTheme();
   const [loading, setLoading] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<string>("Idle");
+  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
+  const [availableUpdate, setAvailableUpdate] = useState<AvailableUpdate | null>(null);
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [updateInstallBusy, setUpdateInstallBusy] = useState(false);
+  const [updateInstallProgress, setUpdateInstallProgress] = useState(0);
+
+  useEffect(() => {
+    getSetting(AUTO_UPDATE_LAST_CHECKED_KEY)
+      .then((value) => setLastCheckedAt(value || null))
+      .catch(() => setLastCheckedAt(null));
+  }, []);
 
   const showMessage = (msg: string) => {
     setMessage(msg);
     setTimeout(() => setMessage(null), 3000);
+  };
+
+  const formatDateTime = (value: string | null): string => {
+    if (!value) return "Never";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "Invalid date";
+    return parsed.toLocaleString();
   };
 
   const handleExportCsv = useCallback(async () => {
@@ -102,6 +143,64 @@ export function SettingsPage({ portfolioEnabled, portfolioLoading, onPortfolioEn
       setLoading(null);
     }
   }, []);
+
+  const handleCheckForUpdates = useCallback(async () => {
+    if (!isTauriRuntime()) {
+      setUpdateStatus("Updater is only available in the Tauri desktop app.");
+      return;
+    }
+    setLoading("updates-check");
+    setUpdateStatus("Checking for updates...");
+    try {
+      const nowIso = new Date().toISOString();
+      await setSetting(AUTO_UPDATE_LAST_CHECKED_KEY, nowIso);
+      setLastCheckedAt(nowIso);
+
+      const update = await checkForUpdates();
+      if (!update) {
+        setAvailableUpdate(null);
+        setUpdateStatus("Up to date.");
+        return;
+      }
+      setAvailableUpdate(update);
+      setUpdateDialogOpen(true);
+      setUpdateStatus(`Update available: v${update.version}`);
+    } catch (err) {
+      setUpdateStatus(`Update check failed: ${String(err)}`);
+    } finally {
+      setLoading(null);
+    }
+  }, []);
+
+  const handleInstallUpdate = useCallback(async () => {
+    if (!availableUpdate || updateInstallBusy) return;
+    setUpdateInstallBusy(true);
+    setUpdateInstallProgress(0);
+    let downloadedTotal = 0;
+    try {
+      await installUpdateAndRelaunch(availableUpdate, (progress) => {
+        if (progress.phase === "started") {
+          downloadedTotal = 0;
+          setUpdateInstallProgress(0);
+          return;
+        }
+        if (progress.phase === "progress") {
+          downloadedTotal += progress.downloaded ?? 0;
+          const total = progress.contentLength ?? 0;
+          if (total > 0) {
+            setUpdateInstallProgress(Math.min(100, Math.round((downloadedTotal / total) * 100)));
+          }
+          return;
+        }
+        if (progress.phase === "finished") {
+          setUpdateInstallProgress(100);
+        }
+      });
+    } catch (err) {
+      setUpdateStatus(`Install failed: ${String(err)}`);
+      setUpdateInstallBusy(false);
+    }
+  }, [availableUpdate, updateInstallBusy]);
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -191,6 +290,52 @@ export function SettingsPage({ portfolioEnabled, portfolioLoading, onPortfolioEn
         </Card>
       </FadeIn>
 
+      {/* Updates */}
+      <FadeIn delay={85}>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Updates</CardTitle>
+            <CardDescription>Control automatic update checks and install new versions safely.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label>Auto-check for updates on startup</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Checks at most once every 24 hours. Updates are never auto-installed.
+                </p>
+              </div>
+              <Switch
+                checked={autoUpdateEnabled}
+                disabled={autoUpdateLoading}
+                onCheckedChange={(checked) => {
+                  onAutoUpdateEnabledChange(checked).catch((err) => {
+                    showMessage("Failed to update setting: " + String(err));
+                  });
+                }}
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void handleCheckForUpdates()}
+                disabled={loading === "updates-check" || updateInstallBusy}
+                className="gap-1.5"
+              >
+                {loading === "updates-check" ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Check for updates
+              </Button>
+              <span className="text-xs text-muted-foreground">Last checked: {formatDateTime(lastCheckedAt)}</span>
+            </div>
+            <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+              <div className="font-medium">Status</div>
+              <div className="text-muted-foreground">{updateStatus}</div>
+            </div>
+          </CardContent>
+        </Card>
+      </FadeIn>
+
       {/* Backup */}
       <FadeIn delay={100}>
         <Card>
@@ -263,6 +408,50 @@ export function SettingsPage({ portfolioEnabled, portfolioLoading, onPortfolioEn
           </CardContent>
         </Card>
       </FadeIn>
+
+      <Dialog open={updateDialogOpen} onOpenChange={setUpdateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {availableUpdate ? `Update Available: v${availableUpdate.version}` : "No update"}
+            </DialogTitle>
+            <DialogDescription>
+              {availableUpdate?.body?.trim()
+                ? "Release notes are shown below."
+                : "No release notes were provided for this version."}
+            </DialogDescription>
+          </DialogHeader>
+          {availableUpdate?.body?.trim() ? (
+            <div className="max-h-56 overflow-auto rounded-md border bg-muted/30 p-3 text-xs whitespace-pre-wrap">
+              {availableUpdate.body}
+            </div>
+          ) : null}
+          {updateInstallBusy ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Installing update...
+              </div>
+              <Progress value={updateInstallProgress} />
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setUpdateDialogOpen(false)}
+              disabled={updateInstallBusy}
+            >
+              Later
+            </Button>
+            <Button
+              onClick={() => void handleInstallUpdate()}
+              disabled={!availableUpdate || updateInstallBusy}
+            >
+              Install update
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
