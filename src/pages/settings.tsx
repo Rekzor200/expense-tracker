@@ -371,6 +371,9 @@ export function SettingsPage({
                 {loading === "json-export" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                 Export JSON Backup
               </Button>
+              <span className="text-xs text-muted-foreground self-center">
+                Note: Receipt images are not included in backups.
+              </span>
               <Button
                 variant="outline"
                 size="sm"

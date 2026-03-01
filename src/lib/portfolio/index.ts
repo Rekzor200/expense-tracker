@@ -28,15 +28,7 @@ type CoinGeckoEntry = {
 type CoinGeckoResponse = Record<string, CoinGeckoEntry>;
 
 async function httpGetText(url: string): Promise<string> {
-  // Prefer browser fetch (works in dev and many production cases).
-  try {
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.text();
-  } catch {
-    // Fallback for CORS-restricted cases in Tauri webview.
-    return invoke<string>("http_get_text", { url });
-  }
+  return invoke<string>("http_get_text", { url });
 }
 
 export interface PortfolioAssetView {

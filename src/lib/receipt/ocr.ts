@@ -27,8 +27,14 @@ function scheduleIdleTermination(): void {
 async function getWorker(): Promise<Worker> {
   clearIdleTimer();
   if (worker) return worker;
-  worker = await createWorker("ron+eng");
-  return worker;
+  try {
+    worker = await createWorker("ron+eng");
+    return worker;
+  } catch (err) {
+    throw new Error(
+      `Failed to initialize OCR. Check your internet connection for the first-time setup. (${String(err)})`
+    );
+  }
 }
 
 export async function extractFromReceipt(imageSource: string | File): Promise<ParsedReceipt> {
@@ -40,12 +46,16 @@ export async function extractFromReceipt(imageSource: string | File): Promise<Pa
     return parseReceiptText(text);
   } catch (err) {
     console.error("OCR extraction failed:", err);
+    const message =
+      err instanceof Error
+        ? err.message
+        : "Failed to initialize OCR. Check your internet connection for the first-time setup.";
     return {
       total: null,
       totalConfidence: 0,
       merchant: null,
       date: null,
-      rawText: "",
+      rawText: message,
     };
   } finally {
     activeOcrJobs = Math.max(0, activeOcrJobs - 1);

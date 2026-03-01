@@ -158,8 +158,15 @@ export async function updateCategory(id: string, data: Partial<Omit<Category, "i
 
 export async function deleteCategory(id: string): Promise<void> {
   const database = await getDb();
-  await database.execute("UPDATE transactions SET categoryId = NULL WHERE categoryId = $1", [id]);
-  await database.execute("DELETE FROM categories WHERE id = $1", [id]);
+  await database.execute("BEGIN TRANSACTION");
+  try {
+    await database.execute("UPDATE transactions SET categoryId = NULL WHERE categoryId = $1", [id]);
+    await database.execute("DELETE FROM categories WHERE id = $1", [id]);
+    await database.execute("COMMIT");
+  } catch (err) {
+    await database.execute("ROLLBACK");
+    throw err;
+  }
 }
 
 export async function getTransactionCountByCategory(categoryId: string): Promise<number> {
@@ -207,14 +214,40 @@ export async function getTransactions(params?: {
     values.push(params.categoryId);
   }
   if (params?.search) {
-    query += ` AND t.note LIKE $${idx++}`;
-    values.push(`%${params.search}%`);
+    query += ` AND t.note LIKE $${idx++} ESCAPE '\\'`;
+    const escapedSearch = params.search
+      .replace(/\\/g, "\\\\")
+      .replace(/%/g, "\\%")
+      .replace(/_/g, "\\_");
+    values.push(`%${escapedSearch}%`);
   }
 
   query += ` ORDER BY t.occurredAt DESC, t.createdAt DESC LIMIT $${idx++}`;
   const limit = Math.max(1, Math.min(params?.limit ?? 200, 2000));
   values.push(limit);
   return database.select<TransactionWithCategory[]>(query, values);
+}
+
+export async function getMonthTypeTotalsForYear(
+  year: number
+): Promise<Array<{ month: number; type: "INCOME" | "EXPENSE"; total: number }>> {
+  const database = await getDb();
+  const start = `${year}-01-01T00:00:00`;
+  const end = `${year}-12-31T23:59:59`;
+  const rows = await database.select<Array<{ month: string; type: "INCOME" | "EXPENSE"; total: number }>>(
+    `SELECT strftime('%m', occurredAt) AS month, type, SUM(amount) AS total
+     FROM transactions
+     WHERE occurredAt >= $1 AND occurredAt <= $2
+     GROUP BY month, type`,
+    [start, end]
+  );
+  return rows
+    .map((row) => ({
+      month: Math.max(1, Math.min(12, Number(row.month || "0"))) - 1,
+      type: row.type,
+      total: Number(row.total || 0),
+    }))
+    .filter((row) => row.month >= 0 && row.month <= 11);
 }
 
 export async function createTransaction(
@@ -451,6 +484,21 @@ export async function importAllData(data: {
   for (const txn of txns) {
     if (!txn.id || !txn.type || typeof txn.amount !== "number") {
       throw new Error(`Invalid transaction in backup: ${JSON.stringify(txn).slice(0, 100)}`);
+    }
+  }
+  for (const cat of cats) {
+    if (!cat.id || !cat.name || !cat.icon) {
+      throw new Error(`Invalid category in backup: ${JSON.stringify(cat).slice(0, 100)}`);
+    }
+  }
+  for (const receipt of recs) {
+    if (!receipt.id || !receipt.transactionId || !receipt.imagePath) {
+      throw new Error(`Invalid receipt in backup: ${JSON.stringify(receipt).slice(0, 100)}`);
+    }
+  }
+  for (const holding of holdings) {
+    if (!holding.symbol || typeof holding.amount !== "number") {
+      throw new Error(`Invalid holding in backup: ${JSON.stringify(holding).slice(0, 100)}`);
     }
   }
 

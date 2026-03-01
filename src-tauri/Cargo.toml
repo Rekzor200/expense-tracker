@@ -1,6 +1,6 @@
 [package]
 name = "expense-tracker"
-version = "0.3.7"
+version = "0.3.8"
 description = "Windows Desktop Expense Tracker"
 authors = ["you"]
 edition = "2021"

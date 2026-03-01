@@ -31,7 +31,7 @@ jobs:
           workspaces: "./src-tauri -> target"
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
 
       - name: Validate Signing Secrets
         shell: bash
@@ -42,7 +42,7 @@ jobs:
           fi
 
       - name: Build and Publish Release
-        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa # v0.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}

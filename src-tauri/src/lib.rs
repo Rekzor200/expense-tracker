@@ -1,4 +1,5 @@
 use reqwest::Url;
+use std::time::Duration;
 
 fn is_allowed_http_get_url(url: &str) -> bool {
     let parsed = match Url::parse(url) {
@@ -28,12 +29,23 @@ async fn http_get_text(url: String) -> Result<String, String> {
         return Err("URL is not allowed".to_string());
     }
 
-    let response = reqwest::get(&url).await.map_err(|e| e.to_string())?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
     let status = response.status();
     if !status.is_success() {
         return Err(format!("HTTP {} for {}", status.as_u16(), url));
     }
-    response.text().await.map_err(|e| e.to_string())
+
+    let body = response.bytes().await.map_err(|e| e.to_string())?;
+    if body.len() > 1024 * 1024 {
+        return Err("HTTP response body exceeds 1MB".to_string());
+    }
+
+    String::from_utf8(body.to_vec()).map_err(|e| e.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

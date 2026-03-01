@@ -16,8 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { getTransactions } from "@/lib/db";
-import { getMonthRange } from "@/lib/domain/calculations";
+import { getMonthTypeTotalsForYear } from "@/lib/db";
 import appLogo from "@/assets/logo-cropped.png";
 import { getVersion } from "@tauri-apps/api/app";
 
@@ -78,27 +77,30 @@ export function Layout({ monthLabel, currentYear, currentMonth, onPrevMonth, onN
     let cancelled = false;
 
     (async () => {
-      const results = await Promise.all(
-        Array.from({ length: 12 }, async (_, monthIdx) => {
-          const range = getMonthRange(pickerYear, monthIdx);
-          const txns = await getTransactions({ startDate: range.start, endDate: range.end });
-          let income = 0;
-          let expenses = 0;
-          for (const txn of txns) {
-            if (txn.type === "INCOME") income += txn.amount;
-            else expenses += txn.amount;
-          }
-          const net = income - expenses;
-          const hasData = income > 0 || expenses > 0;
-          let health: MonthHealth = "none";
-          if (hasData) {
-            if (net < 0) health = "bad";
-            else if (income > 0 && net / income >= 0.2) health = "good";
-            else health = "warn";
-          }
-          return [monthIdx, health] as const;
-        })
-      );
+      const monthlyTotals = await getMonthTypeTotalsForYear(pickerYear);
+      const byMonth = new Map<number, { income: number; expenses: number }>();
+      for (let monthIdx = 0; monthIdx < 12; monthIdx += 1) {
+        byMonth.set(monthIdx, { income: 0, expenses: 0 });
+      }
+      for (const row of monthlyTotals) {
+        const bucket = byMonth.get(row.month);
+        if (!bucket) continue;
+        if (row.type === "INCOME") bucket.income += row.total;
+        else bucket.expenses += row.total;
+      }
+
+      const results = Array.from({ length: 12 }, (_, monthIdx) => {
+        const month = byMonth.get(monthIdx) ?? { income: 0, expenses: 0 };
+        const net = month.income - month.expenses;
+        const hasData = month.income > 0 || month.expenses > 0;
+        let health: MonthHealth = "none";
+        if (hasData) {
+          if (net < 0) health = "bad";
+          else if (month.income > 0 && net / month.income >= 0.2) health = "good";
+          else health = "warn";
+        }
+        return [monthIdx, health] as const;
+      });
 
       if (cancelled) return;
       const next: Record<number, MonthHealth> = {};

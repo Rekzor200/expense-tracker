@@ -11,6 +11,13 @@ node_modules
 dist
 dist-ssr
 *.local
+.npm-cache/
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+Thumbs.db
 
 # Editor directories and files
 .vscode/*

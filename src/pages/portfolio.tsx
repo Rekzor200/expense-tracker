@@ -237,7 +237,21 @@ export function PortfolioPage() {
                           <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                         ))}
                       </Pie>
-                      <RechartsTooltip formatter={(value) => formatCurrency(Number(value), "USD")} />
+                      <RechartsTooltip
+                        formatter={(value) => formatCurrency(Number(value), "USD")}
+                        allowEscapeViewBox={{ x: true, y: true }}
+                        wrapperStyle={{ zIndex: 50, pointerEvents: "none" }}
+                        contentStyle={{
+                          borderRadius: "8px",
+                          border: "1px solid var(--color-border)",
+                          backgroundColor: "var(--color-popover)",
+                          color: "var(--color-popover-foreground)",
+                          fontSize: "13px",
+                          padding: "8px 12px",
+                        }}
+                        itemStyle={{ color: "var(--color-popover-foreground)" }}
+                        labelStyle={{ color: "var(--color-muted-foreground)" }}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
