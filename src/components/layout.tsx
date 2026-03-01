@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { getTransactions } from "@/lib/db";
 import { getMonthRange } from "@/lib/domain/calculations";
 import appLogo from "@/assets/logo-cropped.png";
+import { getVersion } from "@tauri-apps/api/app";
 
 const NAV_ITEMS = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -51,10 +52,25 @@ export function Layout({ monthLabel, currentYear, currentMonth, onPrevMonth, onN
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerYear, setPickerYear] = useState(currentYear);
   const [monthHealth, setMonthHealth] = useState<Record<number, MonthHealth>>({});
+  const [appVersion, setAppVersion] = useState("...");
   const showMonthControls =
     location.pathname === "/" || location.pathname.startsWith("/transactions");
   const showAddButton = location.pathname === "/";
   const showCommandHint = location.pathname === "/";
+
+  useEffect(() => {
+    let cancelled = false;
+    getVersion()
+      .then((version) => {
+        if (!cancelled) setAppVersion(version);
+      })
+      .catch(() => {
+        if (!cancelled) setAppVersion("dev");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!pickerOpen) return;
@@ -154,7 +170,7 @@ export function Layout({ monthLabel, currentYear, currentMonth, onPrevMonth, onN
             </TooltipTrigger>
             <TooltipContent side="right">Settings</TooltipContent>
           </Tooltip>
-          <div className="text-[10px] text-muted-foreground select-none">v0.3.0</div>
+          <div className="text-[10px] text-muted-foreground select-none">v{appVersion}</div>
         </aside>
 
         {/* Main */}
