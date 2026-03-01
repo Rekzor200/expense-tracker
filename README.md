@@ -100,3 +100,7 @@ Build:
 ```bash
 npm run tauri build
 ```
+
+## License
+
+MIT - see [LICENSE](LICENSE).
