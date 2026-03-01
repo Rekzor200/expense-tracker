@@ -1,5 +1,7 @@
 <p align="center">
-  <img src="src/assets/github%20banner.png" alt="Expense Tracker banner" />
+  <a href="https://github.com/Rekzor200/expense-tracker/releases">
+    <img src="src/assets/github%20banner.png" alt="Expense Tracker banner" />
+  </a>
 </p>
 
 # Expense Tracker
