@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src/assets/github%20banner.png" alt="Expense Tracker banner" />
+</p>
+
 # Expense Tracker
 
 Expense Tracker is a fast, modern Windows desktop app for managing personal finances with privacy-first, local storage.
