@@ -57,7 +57,7 @@ Installers are published under GitHub Releases:
 
 Your data stays on your machine.
 
-- App data path: `%APPDATA%/com.messiah.expense-tracker/`
+- App data path: `%APPDATA%/com.expensetracker.app/`
 - Database: `expense-tracker.db` (SQLite)
 - Receipt images: `receipts/`
 
