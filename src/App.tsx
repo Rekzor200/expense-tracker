@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import { Layout } from "@/components/layout";
 import { TransactionModal } from "@/components/transaction-modal";
 import { CommandPalette } from "@/components/command-palette";
+import { Button } from "@/components/ui/button";
 import { DashboardPage } from "@/pages/dashboard";
 import { TransactionsPage } from "@/pages/transactions";
 import { CategoriesPage } from "@/pages/categories";
@@ -11,15 +12,16 @@ import { AnalyticsPage } from "@/pages/analytics";
 import { SettingsPage } from "@/pages/settings";
 import { useMonth } from "@/hooks/use-month";
 import { useTheme } from "@/hooks/use-theme";
+import { useAppSettingBoolean } from "@/hooks/use-app-setting-boolean";
 import { getDb, getCategories, createTransaction, createReceipt } from "@/lib/db";
 import { saveReceiptImage } from "@/lib/receipt/storage";
 import { TransactionSaveData } from "@/components/transaction-modal";
 import { Category, TransactionType } from "@/lib/domain/types";
-import { refreshPortfolioPrices } from "@/lib/portfolio";
 
 export default function App() {
   const month = useMonth();
   useTheme();
+  const [portfolioEnabled, setPortfolioEnabled, portfolioSettingLoading] = useAppSettingBoolean("portfolio_enabled", false);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [initialType, setInitialType] = useState<TransactionType>("EXPENSE");
   const [categories, setCategories] = useState<Category[]>([]);
@@ -31,9 +33,6 @@ export default function App() {
     (async () => {
       try {
         await getDb();
-        await refreshPortfolioPrices().catch(() => {
-          // offline is expected; cache remains available
-        });
         setDbReady(true);
         setCategories(await getCategories());
       } catch (err) {
@@ -107,7 +106,11 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <CommandPalette onAddExpense={handleAddExpense} onAddIncome={handleAddIncome} />
+      <CommandPalette
+        onAddExpense={handleAddExpense}
+        onAddIncome={handleAddIncome}
+        showPortfolio={!portfolioSettingLoading && portfolioEnabled}
+      />
       <Routes>
         <Route
           element={
@@ -119,6 +122,7 @@ export default function App() {
               onNextMonth={month.next}
               onGoToMonth={month.goTo}
               onAddClick={handleAddClick}
+              showPortfolio={!portfolioSettingLoading && portfolioEnabled}
             />
           }
         >
@@ -131,10 +135,29 @@ export default function App() {
             element={<TransactionsPage startDate={month.range.start} endDate={month.range.end} refreshKey={refreshKey} />}
           />
           <Route path="categories" element={<CategoriesPage />} />
-          <Route path="portfolio" element={<PortfolioPage />} />
+          <Route
+            path="portfolio"
+            element={
+              !portfolioEnabled ? (
+                <PortfolioDisabledPage />
+              ) : (
+                <PortfolioPage />
+              )
+            }
+          />
           <Route path="analytics" element={<AnalyticsPage />} />
-          <Route path="settings" element={<SettingsPage />} />
+          <Route
+            path="settings"
+            element={
+              <SettingsPage
+                portfolioEnabled={portfolioEnabled}
+                onPortfolioEnabledChange={setPortfolioEnabled}
+                portfolioLoading={portfolioSettingLoading}
+              />
+            }
+          />
         </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
       {/* Global Add Transaction modal from top bar + command palette */}
@@ -146,5 +169,19 @@ export default function App() {
         initialType={initialType}
       />
     </BrowserRouter>
+  );
+}
+
+function PortfolioDisabledPage() {
+  return (
+    <div className="max-w-xl mx-auto mt-10 rounded-lg border p-6 space-y-3 bg-card">
+      <h2 className="text-lg font-semibold">Portfolio Is Disabled</h2>
+      <p className="text-sm text-muted-foreground">
+        Enable Portfolio (Beta) in Settings to track BTC, ETH, and SOL holdings.
+      </p>
+      <Button asChild size="sm" className="gap-1.5">
+        <Link to="/settings">Open Settings</Link>
+      </Button>
+    </div>
   );
 }

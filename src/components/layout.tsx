@@ -18,6 +18,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { getTransactions } from "@/lib/db";
 import { getMonthRange } from "@/lib/domain/calculations";
+import appLogo from "@/assets/logo-cropped.png";
 
 const NAV_ITEMS = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -25,7 +26,6 @@ const NAV_ITEMS = [
   { to: "/categories", icon: Tags, label: "Categories" },
   { to: "/portfolio", icon: Coins, label: "Portfolio" },
   { to: "/analytics", icon: BarChart3, label: "Analytics" },
-  { to: "/settings", icon: Settings, label: "Settings" },
 ];
 
 const MONTHS = [
@@ -41,11 +41,12 @@ interface LayoutProps {
   onNextMonth: () => void;
   onGoToMonth: (year: number, month: number) => void;
   onAddClick: () => void;
+  showPortfolio: boolean;
 }
 
 type MonthHealth = "good" | "warn" | "bad" | "none";
 
-export function Layout({ monthLabel, currentYear, currentMonth, onPrevMonth, onNextMonth, onGoToMonth, onAddClick }: LayoutProps) {
+export function Layout({ monthLabel, currentYear, currentMonth, onPrevMonth, onNextMonth, onGoToMonth, onAddClick, showPortfolio }: LayoutProps) {
   const location = useLocation();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerYear, setPickerYear] = useState(currentYear);
@@ -106,12 +107,14 @@ export function Layout({ monthLabel, currentYear, currentMonth, onPrevMonth, onN
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="flex h-screen overflow-hidden bg-background">
+      <div className="flex h-screen overflow-hidden">
         {/* Sidebar */}
-        <aside className="w-16 flex flex-col items-center py-4 border-r bg-sidebar shrink-0">
-          <div className="text-xl font-bold text-foreground mb-6 select-none">ET</div>
-          <nav className="flex flex-col gap-1 flex-1">
-            {NAV_ITEMS.map((item) => (
+        <aside className="glass-sidebar relative z-30 w-20 flex flex-col items-center py-4 shrink-0">
+          <div className="mb-6 select-none">
+            <img src={appLogo} alt="Expense Tracker" className="h-16 w-16 object-contain" />
+          </div>
+          <nav className="flex flex-col items-center gap-1 flex-1">
+            {NAV_ITEMS.filter((item) => (item.to === "/portfolio" ? showPortfolio : true)).map((item) => (
               <Tooltip key={item.to}>
                 <TooltipTrigger asChild>
                   <NavLink
@@ -119,10 +122,10 @@ export function Layout({ monthLabel, currentYear, currentMonth, onPrevMonth, onN
                     end={item.to === "/"}
                     className={({ isActive }) =>
                       cn(
-                        "flex items-center justify-center w-10 h-10 rounded-lg transition-colors",
+                        "mx-auto flex items-center justify-center w-10 h-10 rounded-lg transition-colors",
                         isActive
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                          ? "bg-foreground/10 text-foreground"
+                          : "text-foreground/60 hover:text-foreground hover:bg-foreground/5"
                       )
                     }
                   >
@@ -133,13 +136,31 @@ export function Layout({ monthLabel, currentYear, currentMonth, onPrevMonth, onN
               </Tooltip>
             ))}
           </nav>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <NavLink
+                to="/settings"
+                className={({ isActive }) =>
+                  cn(
+                    "mx-auto flex items-center justify-center w-10 h-10 rounded-lg transition-colors mb-2",
+                    isActive
+                      ? "bg-foreground/10 text-foreground"
+                      : "text-foreground/60 hover:text-foreground hover:bg-foreground/5"
+                  )
+                }
+              >
+                <Settings className="w-5 h-5" />
+              </NavLink>
+            </TooltipTrigger>
+            <TooltipContent side="right">Settings</TooltipContent>
+          </Tooltip>
           <div className="text-[10px] text-muted-foreground select-none">v0.3.0</div>
         </aside>
 
         {/* Main */}
         <div className="flex flex-col flex-1 overflow-hidden">
           {/* Top bar */}
-          <header className="h-14 flex items-center justify-between px-6 border-b bg-background shrink-0">
+          <header className="glass-header h-14 sticky top-0 z-20 flex items-center justify-between px-6 shrink-0">
             {showMonthControls ? (
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="icon" onClick={onPrevMonth}>

@@ -130,8 +130,8 @@ export function TransactionsPage({ startDate, endDate, refreshKey }: Transaction
           description="No transactions match your filters. Try adjusting the search or add a new transaction."
         />
       ) : (
-        <div className="rounded-lg border">
-          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-4 px-4 py-2 border-b bg-muted/50 text-xs font-medium text-muted-foreground uppercase">
+        <div className="table-solid rounded-xl">
+          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-4 px-4 py-2 border-b bg-muted/70 text-xs font-medium text-muted-foreground uppercase">
             <span>Transaction</span>
             <span className="text-right">Amount</span>
             <span className="text-center">Date</span>
@@ -139,7 +139,7 @@ export function TransactionsPage({ startDate, endDate, refreshKey }: Transaction
           </div>
           {transactions.map((txn, i) => (
             <FadeIn key={txn.id} delay={i * 30} duration={200}>
-              <div className="grid grid-cols-[1fr_auto_auto_auto] gap-4 items-center px-4 py-3 border-b last:border-0 hover:bg-muted/30 transition-colors">
+              <div className="grid grid-cols-[1fr_auto_auto_auto] gap-4 items-center px-4 py-3 border-b last:border-0 hover:bg-muted/40 transition-colors">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
                     <LucideIcon

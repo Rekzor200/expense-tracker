@@ -10,9 +10,10 @@ import { cn } from "@/lib/utils";
 interface CommandPaletteProps {
   onAddExpense: () => void;
   onAddIncome: () => void;
+  showPortfolio: boolean;
 }
 
-export function CommandPalette({ onAddExpense, onAddIncome }: CommandPaletteProps) {
+export function CommandPalette({ onAddExpense, onAddIncome, showPortfolio }: CommandPaletteProps) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -97,10 +98,12 @@ export function CommandPalette({ onAddExpense, onAddIncome }: CommandPaletteProp
                 <Tags className="w-4 h-4 mr-2" />
                 Categories
               </CommandItem>
-              <CommandItem onSelect={() => runAction(() => navigate("/portfolio"))}>
-                <Coins className="w-4 h-4 mr-2" />
-                Portfolio
-              </CommandItem>
+              {showPortfolio ? (
+                <CommandItem onSelect={() => runAction(() => navigate("/portfolio"))}>
+                  <Coins className="w-4 h-4 mr-2" />
+                  Portfolio
+                </CommandItem>
+              ) : null}
               <CommandItem onSelect={() => runAction(() => navigate("/analytics"))}>
                 <BarChart3 className="w-4 h-4 mr-2" />
                 Analytics

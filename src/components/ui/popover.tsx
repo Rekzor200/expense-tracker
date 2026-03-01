@@ -14,7 +14,7 @@ const PopoverContent = React.forwardRef<
       ref={ref}
       align={align}
       sideOffset={sideOffset}
-      className={cn("z-50 w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none animate-in", className)}
+      className={cn("glass-surface z-50 w-72 p-4 text-popover-foreground outline-none animate-in", className)}
       {...props}
     />
   </PopoverPrimitive.Portal>

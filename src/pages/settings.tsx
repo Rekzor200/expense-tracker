@@ -10,7 +10,13 @@ import { useTheme } from "@/hooks/use-theme";
 import { exportAllData, importAllData, exportTransactionsCsv, loadSampleData } from "@/lib/db";
 import { Download, Upload, Database, FolderOpen, Loader2, Sun, Moon } from "lucide-react";
 
-export function SettingsPage() {
+interface SettingsPageProps {
+  portfolioEnabled: boolean;
+  portfolioLoading: boolean;
+  onPortfolioEnabledChange: (next: boolean) => Promise<void>;
+}
+
+export function SettingsPage({ portfolioEnabled, portfolioLoading, onPortfolioEnabledChange }: SettingsPageProps) {
   const { theme, setTheme } = useTheme();
   const [loading, setLoading] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -151,6 +157,35 @@ export function SettingsPage() {
             <div className="flex items-center gap-2">
               <Badge variant="secondary">RON</Badge>
               <span className="text-sm text-muted-foreground">Romanian Leu (multi-currency coming soon)</span>
+            </div>
+          </CardContent>
+        </Card>
+      </FadeIn>
+
+      {/* Features */}
+      <FadeIn delay={75}>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Features</CardTitle>
+            <CardDescription>Enable optional modules.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label>Enable Portfolio (Beta)</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Track BTC/ETH/SOL holdings with periodically updated prices.
+                </p>
+              </div>
+              <Switch
+                checked={portfolioEnabled}
+                disabled={portfolioLoading}
+                onCheckedChange={(checked) => {
+                  onPortfolioEnabledChange(checked).catch((err) => {
+                    showMessage("Failed to update setting: " + String(err));
+                  });
+                }}
+              />
             </div>
           </CardContent>
         </Card>

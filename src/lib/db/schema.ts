@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const CREATE_TABLES = `
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -60,6 +60,12 @@ CREATE TABLE IF NOT EXISTS fx_cache (
   updatedAt TEXT NOT NULL,
   source TEXT NOT NULL,
   PRIMARY KEY (base, quote)
+);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updatedAt TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_transactions_occurredAt ON transactions(occurredAt);

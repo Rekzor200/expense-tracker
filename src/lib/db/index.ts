@@ -13,6 +13,7 @@ import {
   PriceCache,
   FxCache,
 } from "../domain/types";
+import { getMissingDefaultSettings, parseBooleanSetting } from "./settings-utils";
 
 let db: Database | null = null;
 
@@ -44,19 +45,23 @@ async function runMigrations(database: Database): Promise<void> {
     ]);
     await seedDefaultCategories(database);
     await seedPortfolioHoldings(database);
+    await seedDefaultAppSettings(database);
     return;
   }
 
   const currentVersion = Number(meta[0]?.value || 1);
   if (currentVersion < 2) {
     await seedPortfolioHoldings(database);
-    await database.execute("UPDATE schema_meta SET value = $1 WHERE key = 'version'", [
-      String(SCHEMA_VERSION),
-    ]);
-    return;
   }
+  if (currentVersion < 3) {
+    await seedDefaultAppSettings(database);
+  }
+  await database.execute("UPDATE schema_meta SET value = $1 WHERE key = 'version'", [
+    String(SCHEMA_VERSION),
+  ]);
 
   await seedPortfolioHoldings(database);
+  await seedDefaultAppSettings(database);
 }
 
 async function seedDefaultCategories(database: Database): Promise<void> {
@@ -76,6 +81,17 @@ async function seedPortfolioHoldings(database: Database): Promise<void> {
     await database.execute(
       "INSERT OR IGNORE INTO holdings (symbol, amount, updatedAt) VALUES ($1, $2, $3)",
       [symbol, 0, new Date().toISOString()]
+    );
+  }
+}
+
+async function seedDefaultAppSettings(database: Database): Promise<void> {
+  const rows = await database.select<{ key: string }[]>("SELECT key FROM app_settings");
+  const inserts = getMissingDefaultSettings(rows.map((r) => r.key));
+  for (const row of inserts) {
+    await database.execute(
+      "INSERT INTO app_settings (key, value, updatedAt) VALUES ($1, $2, $3)",
+      [row.key, row.value, new Date().toISOString()]
     );
   }
 }
@@ -284,6 +300,31 @@ export async function upsertFxCache(data: Omit<FxCache, "updatedAt">): Promise<v
   );
 }
 
+// --- App Settings ---
+export async function getSetting(key: string): Promise<string | null> {
+  const database = await getDb();
+  const rows = await database.select<{ value: string }[]>(
+    "SELECT value FROM app_settings WHERE key = $1 LIMIT 1",
+    [key]
+  );
+  return rows[0]?.value ?? null;
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  const database = await getDb();
+  await database.execute(
+    `INSERT INTO app_settings (key, value, updatedAt)
+     VALUES ($1, $2, $3)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`,
+    [key, value, new Date().toISOString()]
+  );
+}
+
+export async function getBooleanSetting(key: string, defaultValue: boolean): Promise<boolean> {
+  const value = await getSetting(key);
+  return parseBooleanSetting(value, defaultValue);
+}
+
 // --- Backup ---
 export async function exportAllData(): Promise<{
   categories: Category[];
@@ -292,6 +333,7 @@ export async function exportAllData(): Promise<{
   holdings: Holding[];
   priceCache: PriceCache[];
   fxCache: FxCache[];
+  appSettings: { key: string; value: string; updatedAt: string }[];
 }> {
   const database = await getDb();
   const categories = await database.select<Category[]>("SELECT * FROM categories");
@@ -300,7 +342,10 @@ export async function exportAllData(): Promise<{
   const holdings = await database.select<Holding[]>("SELECT * FROM holdings");
   const priceCache = await database.select<PriceCache[]>("SELECT * FROM price_cache");
   const fxCache = await database.select<FxCache[]>("SELECT * FROM fx_cache");
-  return { categories, transactions, receipts, holdings, priceCache, fxCache };
+  const appSettings = await database.select<{ key: string; value: string; updatedAt: string }[]>(
+    "SELECT * FROM app_settings"
+  );
+  return { categories, transactions, receipts, holdings, priceCache, fxCache, appSettings };
 }
 
 export async function importAllData(data: {
@@ -310,6 +355,7 @@ export async function importAllData(data: {
   holdings?: Holding[];
   priceCache?: PriceCache[];
   fxCache?: FxCache[];
+  appSettings?: Array<{ key: string; value: string; updatedAt: string }>;
 }): Promise<void> {
   const cats = data.categories ?? [];
   const txns = data.transactions ?? [];
@@ -317,6 +363,7 @@ export async function importAllData(data: {
   const holdings = data.holdings ?? [];
   const priceCache = data.priceCache ?? [];
   const fxCache = data.fxCache ?? [];
+  const appSettings = data.appSettings ?? [];
 
   for (const txn of txns) {
     if (!txn.id || !txn.type || typeof txn.amount !== "number") {
@@ -334,6 +381,7 @@ export async function importAllData(data: {
     await database.execute("DELETE FROM holdings");
     await database.execute("DELETE FROM price_cache");
     await database.execute("DELETE FROM fx_cache");
+    await database.execute("DELETE FROM app_settings");
 
     for (const cat of cats) {
       await database.execute(
@@ -375,6 +423,13 @@ export async function importAllData(data: {
         [fx.base, fx.quote, fx.rate, fx.rateDate, fx.updatedAt, fx.source]
       );
     }
+    for (const s of appSettings) {
+      await database.execute(
+        "INSERT INTO app_settings (key, value, updatedAt) VALUES ($1, $2, $3)",
+        [s.key, s.value, s.updatedAt]
+      );
+    }
+    await seedDefaultAppSettings(database);
     await database.execute("COMMIT");
   } catch (err) {
     await database.execute("ROLLBACK");
