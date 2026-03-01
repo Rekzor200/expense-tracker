@@ -48,7 +48,7 @@
       "endpoints": [
         "https://github.com/Rekzor200/expense-tracker/releases/latest/download/latest.json"
       ],
-      "pubkey": "untrusted comment: minisign public key: CE2B9E00877E4D2D\nRWQtTX6HAJ4rzvfBuILKRgn0mrbVrsV12IP3cjGXiAJgLoSiOxruMNXJ",
+      "pubkey": "RWQtTX6HAJ4rzvfBuILKRgn0mrbVrsV12IP3cjGXiAJgLoSiOxruMNXJ",
       "windows": {
         "installMode": "passive"
       }
