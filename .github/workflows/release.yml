@@ -33,6 +33,14 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
+      - name: Validate Signing Secrets
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY is missing."
+            exit 1
+          fi
+
       - name: Build and Publish Release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -44,4 +52,4 @@ jobs:
           releaseName: Expense Tracker v__VERSION__
           releaseDraft: false
           prerelease: false
-          args: --target x86_64-pc-windows-msvc
+          args: --target x86_64-pc-windows-msvc --verbose
