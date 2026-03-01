@@ -61,6 +61,15 @@ Your data stays on your machine.
 - Database: `expense-tracker.db` (SQLite)
 - Receipt images: `receipts/`
 
+### Storage Locations (Windows)
+
+You may see both folders:
+
+- `%APPDATA%/com.expensetracker.app/` (Roaming): primary user data (database and receipts)
+- `%LOCALAPPDATA%/com.expensetracker.app/` (Local): runtime/cache/update artifacts
+
+This is normal for desktop apps on Windows. The app's persistent finance data is stored in the Roaming location.
+
 No wallet connection and no telemetry in this MVP.
 
 ## Keyboard Shortcuts

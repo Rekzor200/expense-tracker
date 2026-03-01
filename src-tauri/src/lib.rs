@@ -1,5 +1,6 @@
 use reqwest::Url;
 use std::fs;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tauri::Manager;
@@ -99,30 +100,44 @@ fn migrate_legacy_app_data(app: &tauri::AppHandle) -> Result<(), String> {
     fs::create_dir_all(&new_dir)
         .map_err(|e| format!("Failed to prepare {}: {}", new_dir.display(), e))?;
 
-    let appdata = match std::env::var("APPDATA") {
-        Ok(v) => PathBuf::from(v),
-        Err(_) => return Ok(()),
-    };
-    let old_dir = appdata.join(LEGACY_APPDATA_DIR_NAME);
-    if !old_dir.exists() || old_dir == new_dir {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        candidates.push(PathBuf::from(local_app_data).join(LEGACY_APPDATA_DIR_NAME));
+    }
+    if let Ok(app_data) = std::env::var("APPDATA") {
+        candidates.push(PathBuf::from(app_data).join(LEGACY_APPDATA_DIR_NAME));
+    }
+    if candidates.is_empty() {
         return Ok(());
     }
+
+    let mut seen = HashSet::new();
+    candidates.retain(|p| seen.insert(p.clone()));
 
     let new_is_empty = dir_is_empty(&new_dir)?;
     let new_has_db = new_dir.join(DATABASE_FILE_NAME).exists();
-    if !new_is_empty || new_has_db {
-        return Ok(());
-    }
+    let mut copied_once = false;
 
-    copy_dir_recursive(&old_dir, &new_dir)?;
+    for old_dir in candidates {
+        if !old_dir.exists() || old_dir == new_dir {
+            continue;
+        }
 
-    // Best effort cleanup of legacy folder after successful copy.
-    if let Err(err) = fs::remove_dir_all(&old_dir) {
-        eprintln!(
-            "Warning: failed to delete legacy app data folder {}: {}",
-            old_dir.display(),
-            err
-        );
+        if !copied_once && (new_is_empty || !new_has_db) {
+            copy_dir_recursive(&old_dir, &new_dir)?;
+            copied_once = true;
+        }
+
+        // Best effort cleanup of legacy folder once data is available in the new location.
+        if copied_once || !dir_is_empty(&new_dir)? || new_dir.join(DATABASE_FILE_NAME).exists() {
+            if let Err(err) = fs::remove_dir_all(&old_dir) {
+                eprintln!(
+                    "Warning: failed to delete legacy app data folder {}: {}",
+                    old_dir.display(),
+                    err
+                );
+            }
+        }
     }
 
     Ok(())
