@@ -42,7 +42,7 @@ jobs:
           fi
 
       - name: Build and Publish Release
-        uses: tauri-apps/tauri-action@73fb865345fbf73d6fce2f5f8efc5241e9f56994
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
