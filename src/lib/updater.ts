@@ -1,6 +1,7 @@
-const AUTO_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 
-const dynamicImport = new Function("moduleName", "return import(moduleName)") as (moduleName: string) => Promise<unknown>;
+const AUTO_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export interface AvailableUpdate {
   version: string;
@@ -29,10 +30,7 @@ export function shouldAutoCheck(lastCheckedAt: string | null, now = Date.now()):
 
 export async function checkForUpdates(): Promise<AvailableUpdate | null> {
   if (!isTauriRuntime()) return null;
-  const updater = await dynamicImport("@tauri-apps/plugin-updater") as {
-    check: () => Promise<AvailableUpdate | null>;
-  };
-  return updater.check();
+  return check() as Promise<AvailableUpdate | null>;
 }
 
 export async function installUpdateAndRelaunch(
@@ -63,8 +61,5 @@ export async function installUpdateAndRelaunch(
       onProgress({ phase: "finished" });
     }
   });
-  const processModule = await dynamicImport("@tauri-apps/plugin-process") as {
-    relaunch: () => Promise<void>;
-  };
-  await processModule.relaunch();
+  await relaunch();
 }
