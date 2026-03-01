@@ -1,5 +1,7 @@
 export const DEFAULT_APP_SETTINGS: Record<string, string> = {
   portfolio_enabled: "false",
+  auto_update_enabled: "false",
+  auto_update_last_checked_at: "",
 };
 
 export function parseBooleanSetting(value: string | null, defaultValue: boolean): boolean {

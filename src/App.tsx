@@ -1,9 +1,10 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import { Layout } from "@/components/layout";
 import { TransactionModal } from "@/components/transaction-modal";
 import { CommandPalette } from "@/components/command-palette";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { DashboardPage } from "@/pages/dashboard";
 import { TransactionsPage } from "@/pages/transactions";
 import { CategoriesPage } from "@/pages/categories";
@@ -13,21 +14,31 @@ import { SettingsPage } from "@/pages/settings";
 import { useMonth } from "@/hooks/use-month";
 import { useTheme } from "@/hooks/use-theme";
 import { useAppSettingBoolean } from "@/hooks/use-app-setting-boolean";
-import { getDb, getCategories, createTransaction, createReceipt } from "@/lib/db";
+import { getDb, getCategories, createTransaction, createReceipt, getSetting, setSetting } from "@/lib/db";
 import { saveReceiptImage } from "@/lib/receipt/storage";
 import { TransactionSaveData } from "@/components/transaction-modal";
 import { Category, TransactionType } from "@/lib/domain/types";
+import { AvailableUpdate, checkForUpdates, installUpdateAndRelaunch, shouldAutoCheck } from "@/lib/updater";
+import { Loader2 } from "lucide-react";
+
+const AUTO_UPDATE_LAST_CHECKED_KEY = "auto_update_last_checked_at";
 
 export default function App() {
   const month = useMonth();
   useTheme();
   const [portfolioEnabled, setPortfolioEnabled, portfolioSettingLoading] = useAppSettingBoolean("portfolio_enabled", false);
+  const [autoUpdateEnabled, setAutoUpdateEnabled, autoUpdateLoading] = useAppSettingBoolean("auto_update_enabled", false);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [initialType, setInitialType] = useState<TransactionType>("EXPENSE");
   const [categories, setCategories] = useState<Category[]>([]);
   const [dbReady, setDbReady] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [startupUpdate, setStartupUpdate] = useState<AvailableUpdate | null>(null);
+  const [startupUpdateDismissed, setStartupUpdateDismissed] = useState(false);
+  const [startupInstallBusy, setStartupInstallBusy] = useState(false);
+  const [startupInstallProgress, setStartupInstallProgress] = useState(0);
+  const autoCheckRanRef = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -40,6 +51,66 @@ export default function App() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!autoUpdateEnabled) autoCheckRanRef.current = false;
+  }, [autoUpdateEnabled]);
+
+  useEffect(() => {
+    if (!dbReady || autoUpdateLoading || !autoUpdateEnabled || autoCheckRanRef.current) return;
+
+    let cancelled = false;
+    autoCheckRanRef.current = true;
+
+    (async () => {
+      try {
+        const lastChecked = await getSetting(AUTO_UPDATE_LAST_CHECKED_KEY);
+        if (!shouldAutoCheck(lastChecked)) return;
+
+        const nowIso = new Date().toISOString();
+        await setSetting(AUTO_UPDATE_LAST_CHECKED_KEY, nowIso);
+        const update = await checkForUpdates();
+        if (!cancelled && update) {
+          setStartupUpdate(update);
+          setStartupUpdateDismissed(false);
+        }
+      } catch {
+        // Silent fail for startup checks to keep app boot resilient.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dbReady, autoUpdateLoading, autoUpdateEnabled]);
+
+  const handleInstallStartupUpdate = useCallback(async () => {
+    if (!startupUpdate || startupInstallBusy) return;
+    setStartupInstallBusy(true);
+    setStartupInstallProgress(0);
+    let downloadedTotal = 0;
+    try {
+      await installUpdateAndRelaunch(startupUpdate, (progress) => {
+        if (progress.phase === "started") {
+          downloadedTotal = 0;
+          setStartupInstallProgress(0);
+          return;
+        }
+        if (progress.phase === "progress") {
+          downloadedTotal += progress.downloaded ?? 0;
+          const total = progress.contentLength ?? 0;
+          if (total > 0) {
+            setStartupInstallProgress(Math.min(100, Math.round((downloadedTotal / total) * 100)));
+          }
+        }
+        if (progress.phase === "finished") {
+          setStartupInstallProgress(100);
+        }
+      });
+    } catch {
+      setStartupInstallBusy(false);
+    }
+  }, [startupUpdate, startupInstallBusy]);
 
   const refreshCategories = useCallback(async () => {
     setCategories(await getCategories());
@@ -111,6 +182,32 @@ export default function App() {
         onAddIncome={handleAddIncome}
         showPortfolio={!portfolioSettingLoading && portfolioEnabled}
       />
+      {startupUpdate && !startupUpdateDismissed && (
+        <div className="fixed right-4 bottom-4 z-[60] w-[360px] rounded-xl border bg-card/95 p-4 shadow-xl backdrop-blur-sm">
+          <div className="space-y-2">
+            <p className="text-sm font-semibold">Update available: v{startupUpdate.version}</p>
+            <p className="text-xs text-muted-foreground">A newer version is ready. Install now or later from Settings.</p>
+            {startupInstallBusy ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Installing update...
+                </div>
+                <Progress value={startupInstallProgress} />
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={() => void handleInstallStartupUpdate()}>
+                  Install update
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setStartupUpdateDismissed(true)}>
+                  Later
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       <Routes>
         <Route
           element={
@@ -153,6 +250,9 @@ export default function App() {
                 portfolioEnabled={portfolioEnabled}
                 onPortfolioEnabledChange={setPortfolioEnabled}
                 portfolioLoading={portfolioSettingLoading}
+                autoUpdateEnabled={autoUpdateEnabled}
+                onAutoUpdateEnabledChange={setAutoUpdateEnabled}
+                autoUpdateLoading={autoUpdateLoading}
               />
             }
           />

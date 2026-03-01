@@ -18,13 +18,19 @@ describe("parseBooleanSetting", () => {
 });
 
 describe("getMissingDefaultSettings", () => {
-  it("includes portfolio_enabled=false when missing", () => {
+  it("includes default settings when missing", () => {
     const missing = getMissingDefaultSettings([]);
     expect(missing).toContainEqual({ key: "portfolio_enabled", value: "false" });
+    expect(missing).toContainEqual({ key: "auto_update_enabled", value: "false" });
+    expect(missing).toContainEqual({ key: "auto_update_last_checked_at", value: "" });
   });
 
   it("does not include settings that already exist", () => {
-    const missing = getMissingDefaultSettings(["portfolio_enabled"]);
+    const missing = getMissingDefaultSettings([
+      "portfolio_enabled",
+      "auto_update_enabled",
+      "auto_update_last_checked_at",
+    ]);
     expect(missing).toHaveLength(0);
   });
 });
