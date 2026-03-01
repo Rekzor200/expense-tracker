@@ -13,7 +13,13 @@ import {
 import { LucideIcon } from "@/components/lucide-icon";
 import { EmptyState } from "@/components/reactbits/empty-state";
 import { FadeIn } from "@/components/reactbits/fade-in";
-import { getCategories, createCategory, updateCategory, deleteCategory } from "@/lib/db";
+import {
+  getCategories,
+  createCategory,
+  updateCategory,
+  deleteCategory,
+  getTransactionCountByCategory,
+} from "@/lib/db";
 import { formatCurrency } from "@/lib/domain/calculations";
 import { Category } from "@/lib/domain/types";
 import { Plus, Pencil, Trash2, Tags } from "lucide-react";
@@ -31,6 +37,7 @@ export function CategoriesPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editCat, setEditCat] = useState<Category | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteImpactCount, setDeleteImpactCount] = useState<number>(0);
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("circle");
   const [budget, setBudget] = useState("");
@@ -75,8 +82,19 @@ export function CategoriesPage() {
     if (!deleteId) return;
     await deleteCategory(deleteId);
     setDeleteId(null);
+    setDeleteImpactCount(0);
     await load();
   };
+
+  const openDelete = useCallback(async (categoryId: string) => {
+    setDeleteId(categoryId);
+    try {
+      const count = await getTransactionCountByCategory(categoryId);
+      setDeleteImpactCount(count);
+    } catch {
+      setDeleteImpactCount(0);
+    }
+  }, []);
 
   if (loading) {
     return <div className="flex items-center justify-center h-64 text-muted-foreground">Loading...</div>;
@@ -129,7 +147,7 @@ export function CategoriesPage() {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-destructive"
-                      onClick={() => setDeleteId(cat.id)}
+                      onClick={() => void openDelete(cat.id)}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
@@ -199,12 +217,20 @@ export function CategoriesPage() {
       </Dialog>
 
       {/* Delete Confirmation */}
-      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+      <AlertDialog
+        open={!!deleteId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteId(null);
+            setDeleteImpactCount(0);
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Category</AlertDialogTitle>
             <AlertDialogDescription>
-              Transactions using this category will become uncategorized. This cannot be undone.
+              {deleteImpactCount} transaction{deleteImpactCount === 1 ? "" : "s"} will become uncategorized. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

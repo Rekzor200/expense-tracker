@@ -39,6 +39,7 @@ export function SettingsPage({
   autoUpdateLoading,
   onAutoUpdateEnabledChange,
 }: SettingsPageProps) {
+  const isDevMode = import.meta.env.DEV;
   const { theme, setTheme } = useTheme();
   const [loading, setLoading] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -117,12 +118,13 @@ export function SettingsPage({
       try {
         const text = await file.text();
         const data = JSON.parse(text);
-        if (!data.categories || !data.transactions) {
+        if (!data || typeof data !== "object") {
           showMessage("Invalid backup file format.");
           return;
         }
         await importAllData(data);
-        showMessage("Backup imported successfully! Reload to see changes.");
+        showMessage("Backup imported. Reloading...");
+        setTimeout(() => window.location.reload(), 600);
       } catch (err) {
         showMessage("Import failed: " + String(err));
       } finally {
@@ -135,8 +137,12 @@ export function SettingsPage({
   const handleLoadSample = useCallback(async () => {
     setLoading("sample");
     try {
-      await loadSampleData();
-      showMessage("Sample data loaded! Navigate to Dashboard to see it.");
+      const inserted = await loadSampleData();
+      showMessage(
+        inserted
+          ? "Sample data loaded! Navigate to Dashboard to see it."
+          : "Sample data was skipped because transactions already exist."
+      );
     } catch (err) {
       showMessage("Failed to load sample data: " + String(err));
     } finally {
@@ -388,26 +394,28 @@ export function SettingsPage({
       </FadeIn>
 
       {/* Sample Data */}
-      <FadeIn delay={150}>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Developer</CardTitle>
-            <CardDescription>Tools for testing and development.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleLoadSample}
-              disabled={!!loading}
-              className="gap-1.5"
-            >
-              {loading === "sample" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
-              Load Sample Data
-            </Button>
-          </CardContent>
-        </Card>
-      </FadeIn>
+      {isDevMode ? (
+        <FadeIn delay={150}>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Developer</CardTitle>
+              <CardDescription>Tools for testing and development.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLoadSample}
+                disabled={!!loading}
+                className="gap-1.5"
+              >
+                {loading === "sample" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
+                Load Sample Data
+              </Button>
+            </CardContent>
+          </Card>
+        </FadeIn>
+      ) : null}
 
       <Dialog open={updateDialogOpen} onOpenChange={setUpdateDialogOpen}>
         <DialogContent>

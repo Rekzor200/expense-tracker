@@ -1,5 +1,33 @@
+use reqwest::Url;
+
+fn is_allowed_http_get_url(url: &str) -> bool {
+    let parsed = match Url::parse(url) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+
+    if parsed.scheme() != "https" {
+        return false;
+    }
+
+    let host = match parsed.host_str() {
+        Some(v) => v,
+        None => return false,
+    };
+
+    match host {
+        "api.coingecko.com" => parsed.path() == "/api/v3/simple/price",
+        "www.ecb.europa.eu" => parsed.path() == "/stats/eurofxref/eurofxref-daily.xml",
+        _ => false,
+    }
+}
+
 #[tauri::command]
 async fn http_get_text(url: String) -> Result<String, String> {
+    if !is_allowed_http_get_url(&url) {
+        return Err("URL is not allowed".to_string());
+    }
+
     let response = reqwest::get(&url).await.map_err(|e| e.to_string())?;
     let status = response.status();
     if !status.is_success() {

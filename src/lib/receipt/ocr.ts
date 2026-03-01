@@ -3,14 +3,36 @@ import { parseReceiptText } from "./parser";
 import { ParsedReceipt } from "../domain/types";
 
 let worker: Worker | null = null;
+let activeOcrJobs = 0;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+const OCR_IDLE_TIMEOUT_MS = 2 * 60 * 1000;
+
+function clearIdleTimer(): void {
+  if (!idleTimer) return;
+  clearTimeout(idleTimer);
+  idleTimer = null;
+}
+
+function scheduleIdleTermination(): void {
+  clearIdleTimer();
+  idleTimer = setTimeout(() => {
+    if (activeOcrJobs === 0) {
+      terminateOcr().catch((err) => {
+        console.error("Failed to terminate OCR worker after idle timeout:", err);
+      });
+    }
+  }, OCR_IDLE_TIMEOUT_MS);
+}
 
 async function getWorker(): Promise<Worker> {
+  clearIdleTimer();
   if (worker) return worker;
   worker = await createWorker("ron+eng");
   return worker;
 }
 
 export async function extractFromReceipt(imageSource: string | File): Promise<ParsedReceipt> {
+  activeOcrJobs += 1;
   try {
     const w = await getWorker();
     const result = await w.recognize(imageSource);
@@ -25,10 +47,16 @@ export async function extractFromReceipt(imageSource: string | File): Promise<Pa
       date: null,
       rawText: "",
     };
+  } finally {
+    activeOcrJobs = Math.max(0, activeOcrJobs - 1);
+    if (activeOcrJobs === 0) {
+      scheduleIdleTermination();
+    }
   }
 }
 
 export async function terminateOcr(): Promise<void> {
+  clearIdleTimer();
   if (worker) {
     await worker.terminate();
     worker = null;

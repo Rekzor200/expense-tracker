@@ -1,5 +1,14 @@
 import { Transaction, TransactionWithCategory, CategorySummary, MonthSummary, Category } from "./types";
 
+export function roundToDecimals(value: number, decimals: number): number {
+  const factor = 10 ** Math.max(0, decimals);
+  return Math.round((value + Number.EPSILON) * factor) / factor;
+}
+
+export function roundToCents(value: number): number {
+  return roundToDecimals(value, 2);
+}
+
 export function calculateMonthSummary(transactions: Transaction[]): MonthSummary {
   let income = 0;
   let expenses = 0;
@@ -10,7 +19,9 @@ export function calculateMonthSummary(transactions: Transaction[]): MonthSummary
       expenses += t.amount;
     }
   }
-  return { income, expenses, net: income - expenses };
+  income = roundToCents(income);
+  expenses = roundToCents(expenses);
+  return { income, expenses, net: roundToCents(income - expenses) };
 }
 
 export function calculateCategorySummaries(
@@ -18,12 +29,12 @@ export function calculateCategorySummaries(
   categories: Category[]
 ): CategorySummary[] {
   const expenseTransactions = transactions.filter((t) => t.type === "EXPENSE");
-  const totalExpenses = expenseTransactions.reduce((sum, t) => sum + t.amount, 0);
+  const totalExpenses = roundToCents(expenseTransactions.reduce((sum, t) => sum + t.amount, 0));
 
   const byCategory = new Map<string, number>();
   for (const t of expenseTransactions) {
     const key = t.categoryId || "uncategorized";
-    byCategory.set(key, (byCategory.get(key) || 0) + t.amount);
+    byCategory.set(key, roundToCents((byCategory.get(key) || 0) + t.amount));
   }
 
   const categoryMap = new Map(categories.map((c) => [c.id, c]));
@@ -35,9 +46,9 @@ export function calculateCategorySummaries(
       categoryId: catId,
       categoryName: cat?.name || "Uncategorized",
       categoryIcon: cat?.icon || "help-circle",
-      total,
+      total: roundToCents(total),
       budget: cat?.monthlyBudget ?? null,
-      percentage: totalExpenses > 0 ? (total / totalExpenses) * 100 : 0,
+      percentage: totalExpenses > 0 ? roundToCents((total / totalExpenses) * 100) : 0,
     });
   }
 
@@ -66,7 +77,7 @@ export function calculateDailyTrend(
   for (const t of transactions.filter((t) => t.type === "EXPENSE")) {
     const day = t.occurredAt.slice(0, 10);
     if (dailyMap.has(day)) {
-      dailyMap.set(day, (dailyMap.get(day) || 0) + t.amount);
+      dailyMap.set(day, roundToCents((dailyMap.get(day) || 0) + t.amount));
     }
   }
 
@@ -77,7 +88,7 @@ export function calculateDailyTrend(
 
 export function calculatePercentChange(current: number, previous: number): number | null {
   if (previous === 0) return current > 0 ? 100 : null;
-  return ((current - previous) / previous) * 100;
+  return roundToCents(((current - previous) / previous) * 100);
 }
 
 export function formatCurrency(amount: number, currency = "RON"): string {
@@ -86,7 +97,7 @@ export function formatCurrency(amount: number, currency = "RON"): string {
     currency,
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(roundToCents(amount));
 }
 
 /** Format a Date as YYYY-MM-DD using local time (avoids UTC shift). */

@@ -183,7 +183,7 @@ export default function App() {
         showPortfolio={!portfolioSettingLoading && portfolioEnabled}
       />
       {startupUpdate && !startupUpdateDismissed && (
-        <div className="fixed right-4 bottom-4 z-[60] w-[360px] rounded-xl border bg-card/95 p-4 shadow-xl backdrop-blur-sm">
+        <div className="fixed right-4 bottom-4 z-60 w-90 rounded-xl border bg-card/95 p-4 shadow-xl backdrop-blur-sm">
           <div className="space-y-2">
             <p className="text-sm font-semibold">Update available: v{startupUpdate.version}</p>
             <p className="text-xs text-muted-foreground">A newer version is ready. Install now or later from Settings.</p>

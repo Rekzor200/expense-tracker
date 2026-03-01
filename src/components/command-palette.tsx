@@ -47,7 +47,7 @@ export function CommandPalette({ onAddExpense, onAddIncome, showPortfolio }: Com
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100]">
+    <div className="fixed inset-0 z-100">
       <div
         className="fixed inset-0 bg-black/50"
         onClick={() => setOpen(false)}

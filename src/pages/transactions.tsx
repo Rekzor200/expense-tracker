@@ -45,6 +45,7 @@ export function TransactionsPage({ startDate, endDate, refreshKey }: Transaction
         type: filterType !== "all" ? filterType : undefined,
         categoryId: filterCategory !== "all" ? filterCategory : undefined,
         search: search || undefined,
+        limit: 200,
       }),
       getCategories(),
     ]);
@@ -138,7 +139,7 @@ export function TransactionsPage({ startDate, endDate, refreshKey }: Transaction
             <span className="text-right">Actions</span>
           </div>
           {transactions.map((txn, i) => (
-            <FadeIn key={txn.id} delay={i * 30} duration={200}>
+            <FadeIn key={txn.id} delay={Math.min(i, 19) * 30} duration={200}>
               <div className="grid grid-cols-[1fr_auto_auto_auto] gap-4 items-center px-4 py-3 border-b last:border-0 hover:bg-muted/40 transition-colors">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">

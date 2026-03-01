@@ -7,6 +7,7 @@ import {
   upsertPriceCache,
 } from "@/lib/db";
 import { FxCache, Holding, PortfolioSymbol, PriceCache } from "@/lib/domain/types";
+import { roundToCents } from "@/lib/domain/calculations";
 
 const COINGECKO_URL =
   "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd,eur&include_24hr_change=true";
@@ -114,15 +115,15 @@ function buildSnapshot(
     const usd = priceMap.get(`${h.symbol}:USD`)?.price ?? 0;
     const eur = priceMap.get(`${h.symbol}:EUR`)?.price ?? 0;
     const change24h = priceMap.get(`${h.symbol}:USD`)?.change24h ?? null;
-    const valueUSD = h.amount * usd;
-    const valueRON = eurRon ? h.amount * eur * eurRon : 0;
-    totalUSD += valueUSD;
-    totalRON += valueRON;
+    const valueUSD = roundToCents(h.amount * usd);
+    const valueRON = roundToCents(eurRon ? h.amount * eur * eurRon : 0);
+    totalUSD = roundToCents(totalUSD + valueUSD);
+    totalRON = roundToCents(totalRON + valueRON);
     return {
       symbol: h.symbol,
       amount: h.amount,
-      priceUSD: usd,
-      priceEUR: eur,
+      priceUSD: roundToCents(usd),
+      priceEUR: roundToCents(eur),
       change24h,
       valueUSD,
       valueRON,
@@ -141,7 +142,14 @@ function buildSnapshot(
   const latest = timestamps.length > 0 ? new Date(Math.max(...timestamps)).toISOString() : null;
   const stale = latest ? Date.now() - Date.parse(latest) > 6 * 60 * 60 * 1000 : true;
 
-  return { assets, totalUSD, totalRON, lastUpdated: latest, stale, eurRon };
+  return {
+    assets,
+    totalUSD: roundToCents(totalUSD),
+    totalRON: roundToCents(totalRON),
+    lastUpdated: latest,
+    stale,
+    eurRon: eurRon !== null ? roundToCents(eurRon) : null,
+  };
 }
 
 export async function loadPortfolioSnapshot(): Promise<PortfolioSnapshot> {

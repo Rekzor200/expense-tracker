@@ -13,6 +13,7 @@ import { Upload, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { LucideIcon } from "@/components/lucide-icon";
 import { Category, Transaction, TransactionType, ParsedReceipt } from "@/lib/domain/types";
 import { extractFromReceipt } from "@/lib/receipt/ocr";
+import { validateReceiptFile } from "@/lib/receipt/storage";
 import { formatCurrency, localDateStr } from "@/lib/domain/calculations";
 
 export interface ReceiptData {
@@ -51,6 +52,7 @@ export function TransactionModal({
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrResult, setOcrResult] = useState<ParsedReceipt | null>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
   const [showRawOcr, setShowRawOcr] = useState(false);
   const amountRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -72,6 +74,7 @@ export function TransactionModal({
       }
       setOcrResult(null);
       setReceiptFile(null);
+      setReceiptError(null);
       setShowRawOcr(false);
       setTimeout(() => amountRef.current?.focus(), 100);
     }
@@ -117,12 +120,19 @@ export function TransactionModal({
       if (!file) return;
       setOcrLoading(true);
       try {
+        await validateReceiptFile(file);
+        setReceiptError(null);
         setReceiptFile(file);
         const result = await extractFromReceipt(file);
         setOcrResult(result);
         if (result.total !== null) setAmount(String(result.total));
         if (result.date) setDate(result.date);
         if (result.merchant) setNote(result.merchant);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to process receipt file.";
+        setReceiptError(message);
+        setReceiptFile(null);
+        setOcrResult(null);
       } finally {
         setOcrLoading(false);
         if (fileRef.current) fileRef.current.value = "";
@@ -237,6 +247,9 @@ export function TransactionModal({
                   onChange={handleReceiptUpload}
                 />
               </div>
+              {receiptError ? (
+                <p className="text-xs text-destructive">{receiptError}</p>
+              ) : null}
 
               {/* OCR Results */}
               {ocrResult && (

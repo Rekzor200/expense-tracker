@@ -1,5 +1,5 @@
 import Database from "@tauri-apps/plugin-sql";
-import { CREATE_TABLES, SCHEMA_VERSION } from "./schema";
+import { LATEST_SCHEMA_VERSION, MIGRATIONS } from "./schema";
 import { v4 as uuid } from "uuid";
 import {
   Category,
@@ -14,8 +14,18 @@ import {
   FxCache,
 } from "../domain/types";
 import { getMissingDefaultSettings, parseBooleanSetting } from "./settings-utils";
+import { deleteReceiptImage } from "../receipt/storage";
+import { roundToCents, roundToDecimals } from "../domain/calculations";
 
 let db: Database | null = null;
+
+export function __setDbForTests(database: Database | null): void {
+  db = database;
+}
+
+export function __resetDbForTests(): void {
+  db = null;
+}
 
 export async function getDb(): Promise<Database> {
   if (db) return db;
@@ -30,35 +40,44 @@ export async function getDb(): Promise<Database> {
 }
 
 async function runMigrations(database: Database): Promise<void> {
-  const statements = CREATE_TABLES.split(";").map((s) => s.trim()).filter(Boolean);
-  for (const stmt of statements) {
-    await database.execute(stmt + ";");
-  }
+  await database.execute(
+    "CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+  );
 
   const meta = await database.select<{ value: string }[]>(
     "SELECT value FROM schema_meta WHERE key = 'version'"
   );
 
   if (meta.length === 0) {
-    await database.execute("INSERT INTO schema_meta (key, value) VALUES ('version', $1)", [
-      String(SCHEMA_VERSION),
-    ]);
-    await seedDefaultCategories(database);
-    await seedPortfolioHoldings(database);
-    await seedDefaultAppSettings(database);
-    return;
+    await database.execute("INSERT INTO schema_meta (key, value) VALUES ('version', '0')");
   }
 
-  const currentVersion = Number(meta[0]?.value || 1);
-  if (currentVersion < 2) {
-    await seedPortfolioHoldings(database);
+  let currentVersion = Number(meta[0]?.value ?? "0");
+  if (!Number.isFinite(currentVersion) || currentVersion < 0) {
+    currentVersion = 0;
   }
-  if (currentVersion < 3) {
-    await seedDefaultAppSettings(database);
+
+  const migrationsToRun = MIGRATIONS.filter((migration) => migration.version > currentVersion)
+    .sort((a, b) => a.version - b.version);
+
+  for (const migration of migrationsToRun) {
+    for (const statement of migration.statements) {
+      await database.execute(statement);
+    }
+    await database.execute("UPDATE schema_meta SET value = $1 WHERE key = 'version'", [
+      String(migration.version),
+    ]);
+    currentVersion = migration.version;
   }
-  await database.execute("UPDATE schema_meta SET value = $1 WHERE key = 'version'", [
-    String(SCHEMA_VERSION),
-  ]);
+
+  if (meta.length === 0) {
+    await seedDefaultCategories(database);
+  }
+  if (currentVersion < LATEST_SCHEMA_VERSION) {
+    await database.execute("UPDATE schema_meta SET value = $1 WHERE key = 'version'", [
+      String(LATEST_SCHEMA_VERSION),
+    ]);
+  }
 
   await seedPortfolioHoldings(database);
   await seedDefaultAppSettings(database);
@@ -106,7 +125,12 @@ export async function createCategory(
   data: Omit<Category, "id" | "createdAt">
 ): Promise<Category> {
   const database = await getDb();
-  const cat: Category = { id: uuid(), ...data, createdAt: new Date().toISOString() };
+  const cat: Category = {
+    id: uuid(),
+    ...data,
+    monthlyBudget: data.monthlyBudget !== null ? roundToCents(data.monthlyBudget) : null,
+    createdAt: new Date().toISOString(),
+  };
   await database.execute(
     "INSERT INTO categories (id, name, icon, monthlyBudget, createdAt) VALUES ($1, $2, $3, $4, $5)",
     [cat.id, cat.name, cat.icon, cat.monthlyBudget, cat.createdAt]
@@ -122,7 +146,10 @@ export async function updateCategory(id: string, data: Partial<Omit<Category, "i
 
   if (data.name !== undefined) { fields.push(`name = $${idx++}`); values.push(data.name); }
   if (data.icon !== undefined) { fields.push(`icon = $${idx++}`); values.push(data.icon); }
-  if (data.monthlyBudget !== undefined) { fields.push(`monthlyBudget = $${idx++}`); values.push(data.monthlyBudget); }
+  if (data.monthlyBudget !== undefined) {
+    fields.push(`monthlyBudget = $${idx++}`);
+    values.push(data.monthlyBudget !== null ? roundToCents(data.monthlyBudget) : null);
+  }
 
   if (fields.length === 0) return;
   values.push(id);
@@ -135,6 +162,15 @@ export async function deleteCategory(id: string): Promise<void> {
   await database.execute("DELETE FROM categories WHERE id = $1", [id]);
 }
 
+export async function getTransactionCountByCategory(categoryId: string): Promise<number> {
+  const database = await getDb();
+  const rows = await database.select<Array<{ count: number }>>(
+    "SELECT COUNT(*) as count FROM transactions WHERE categoryId = $1",
+    [categoryId]
+  );
+  return Number(rows[0]?.count || 0);
+}
+
 // --- Transactions ---
 export async function getTransactions(params?: {
   startDate?: string;
@@ -142,6 +178,7 @@ export async function getTransactions(params?: {
   type?: string;
   categoryId?: string;
   search?: string;
+  limit?: number;
 }): Promise<TransactionWithCategory[]> {
   const database = await getDb();
   let query = `
@@ -174,7 +211,9 @@ export async function getTransactions(params?: {
     values.push(`%${params.search}%`);
   }
 
-  query += " ORDER BY t.occurredAt DESC, t.createdAt DESC";
+  query += ` ORDER BY t.occurredAt DESC, t.createdAt DESC LIMIT $${idx++}`;
+  const limit = Math.max(1, Math.min(params?.limit ?? 200, 2000));
+  values.push(limit);
   return database.select<TransactionWithCategory[]>(query, values);
 }
 
@@ -182,7 +221,12 @@ export async function createTransaction(
   data: Omit<Transaction, "id" | "createdAt">
 ): Promise<Transaction> {
   const database = await getDb();
-  const txn: Transaction = { id: uuid(), ...data, createdAt: new Date().toISOString() };
+  const txn: Transaction = {
+    id: uuid(),
+    ...data,
+    amount: roundToCents(data.amount),
+    createdAt: new Date().toISOString(),
+  };
   await database.execute(
     "INSERT INTO transactions (id, type, amount, currency, categoryId, note, occurredAt, createdAt) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
     [txn.id, txn.type, txn.amount, txn.currency, txn.categoryId, txn.note, txn.occurredAt, txn.createdAt]
@@ -200,7 +244,7 @@ export async function updateTransaction(
   let idx = 1;
 
   if (data.type !== undefined) { fields.push(`type = $${idx++}`); values.push(data.type); }
-  if (data.amount !== undefined) { fields.push(`amount = $${idx++}`); values.push(data.amount); }
+  if (data.amount !== undefined) { fields.push(`amount = $${idx++}`); values.push(roundToCents(data.amount)); }
   if (data.currency !== undefined) { fields.push(`currency = $${idx++}`); values.push(data.currency); }
   if (data.categoryId !== undefined) { fields.push(`categoryId = $${idx++}`); values.push(data.categoryId); }
   if (data.note !== undefined) { fields.push(`note = $${idx++}`); values.push(data.note); }
@@ -213,8 +257,15 @@ export async function updateTransaction(
 
 export async function deleteTransaction(id: string): Promise<void> {
   const database = await getDb();
+  const receipts = await database.select<Array<{ imagePath: string }>>(
+    "SELECT imagePath FROM receipts WHERE transactionId = $1",
+    [id]
+  );
   await database.execute("DELETE FROM receipts WHERE transactionId = $1", [id]);
   await database.execute("DELETE FROM transactions WHERE id = $1", [id]);
+  for (const receipt of receipts) {
+    await deleteReceiptImage(receipt.imagePath);
+  }
 }
 
 // --- Receipts ---
@@ -272,7 +323,14 @@ export async function upsertPriceCache(rows: Omit<PriceCache, "updatedAt">[]): P
          change24h = excluded.change24h,
          updatedAt = excluded.updatedAt,
          source = excluded.source`,
-      [row.symbol, row.currency, row.price, row.change24h, updatedAt, row.source]
+      [
+        row.symbol,
+        row.currency,
+        roundToDecimals(row.price, 8),
+        row.change24h !== null ? roundToDecimals(row.change24h, 4) : null,
+        updatedAt,
+        row.source,
+      ]
     );
   }
 }
@@ -296,7 +354,14 @@ export async function upsertFxCache(data: Omit<FxCache, "updatedAt">): Promise<v
        rateDate = excluded.rateDate,
        updatedAt = excluded.updatedAt,
        source = excluded.source`,
-    [data.base, data.quote, data.rate, data.rateDate, new Date().toISOString(), data.source]
+    [
+      data.base,
+      data.quote,
+      roundToDecimals(data.rate, 6),
+      data.rateDate,
+      new Date().toISOString(),
+      data.source,
+    ]
   );
 }
 
@@ -327,6 +392,7 @@ export async function getBooleanSetting(key: string, defaultValue: boolean): Pro
 
 // --- Backup ---
 export async function exportAllData(): Promise<{
+  schemaVersion: number;
   categories: Category[];
   transactions: Transaction[];
   receipts: Receipt[];
@@ -345,10 +411,20 @@ export async function exportAllData(): Promise<{
   const appSettings = await database.select<{ key: string; value: string; updatedAt: string }[]>(
     "SELECT * FROM app_settings"
   );
-  return { categories, transactions, receipts, holdings, priceCache, fxCache, appSettings };
+  return {
+    schemaVersion: LATEST_SCHEMA_VERSION,
+    categories,
+    transactions,
+    receipts,
+    holdings,
+    priceCache,
+    fxCache,
+    appSettings,
+  };
 }
 
 export async function importAllData(data: {
+  schemaVersion?: number;
   categories?: Category[];
   transactions?: Transaction[];
   receipts?: Receipt[];
@@ -357,6 +433,13 @@ export async function importAllData(data: {
   fxCache?: FxCache[];
   appSettings?: Array<{ key: string; value: string; updatedAt: string }>;
 }): Promise<void> {
+  if (typeof data.schemaVersion !== "number" || !Number.isInteger(data.schemaVersion)) {
+    throw new Error("Invalid backup format: schemaVersion is missing or invalid.");
+  }
+  if (data.schemaVersion < 1 || data.schemaVersion > LATEST_SCHEMA_VERSION) {
+    throw new Error(`Unsupported backup schemaVersion: ${data.schemaVersion}.`);
+  }
+
   const cats = data.categories ?? [];
   const txns = data.transactions ?? [];
   const recs = data.receipts ?? [];
@@ -386,13 +469,28 @@ export async function importAllData(data: {
     for (const cat of cats) {
       await database.execute(
         "INSERT INTO categories (id, name, icon, monthlyBudget, createdAt) VALUES ($1, $2, $3, $4, $5)",
-        [cat.id, cat.name, cat.icon, cat.monthlyBudget, cat.createdAt]
+        [
+          cat.id,
+          cat.name,
+          cat.icon,
+          cat.monthlyBudget !== null ? roundToCents(cat.monthlyBudget) : null,
+          cat.createdAt,
+        ]
       );
     }
     for (const txn of txns) {
       await database.execute(
         "INSERT INTO transactions (id, type, amount, currency, categoryId, note, occurredAt, createdAt) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-        [txn.id, txn.type, txn.amount, txn.currency, txn.categoryId, txn.note, txn.occurredAt, txn.createdAt]
+        [
+          txn.id,
+          txn.type,
+          roundToCents(txn.amount),
+          txn.currency,
+          txn.categoryId,
+          txn.note,
+          txn.occurredAt,
+          txn.createdAt,
+        ]
       );
     }
     for (const r of recs) {
@@ -414,13 +512,27 @@ export async function importAllData(data: {
       if (p.currency !== "USD" && p.currency !== "EUR") continue;
       await database.execute(
         "INSERT INTO price_cache (symbol, currency, price, change24h, updatedAt, source) VALUES ($1, $2, $3, $4, $5, $6)",
-        [p.symbol, p.currency, p.price, p.change24h, p.updatedAt, p.source]
+        [
+          p.symbol,
+          p.currency,
+          roundToDecimals(p.price, 8),
+          p.change24h !== null ? roundToDecimals(p.change24h, 4) : null,
+          p.updatedAt,
+          p.source,
+        ]
       );
     }
     for (const fx of fxCache) {
       await database.execute(
         "INSERT INTO fx_cache (base, quote, rate, rateDate, updatedAt, source) VALUES ($1, $2, $3, $4, $5, $6)",
-        [fx.base, fx.quote, fx.rate, fx.rateDate, fx.updatedAt, fx.source]
+        [
+          fx.base,
+          fx.quote,
+          roundToDecimals(fx.rate, 6),
+          fx.rateDate,
+          fx.updatedAt,
+          fx.source,
+        ]
       );
     }
     for (const s of appSettings) {
@@ -446,10 +558,27 @@ export async function exportTransactionsCsv(): Promise<string> {
     ORDER BY t.occurredAt DESC
   `);
 
+  const sanitizeCsvCell = (value: unknown): string => {
+    const raw = value === null || value === undefined ? "" : String(value);
+    const trimmed = raw.trimStart();
+    const firstChar = trimmed.charAt(0);
+    const formulaChars = new Set(["=", "+", "-", "@", "\t", "\r"]);
+    const prefixed = formulaChars.has(firstChar) ? `'${raw}` : raw;
+    return prefixed.replace(/"/g, '""');
+  };
+
   const header = "Date,Type,Amount,Currency,Category,Note";
-  const rows = transactions.map((t) =>
-    `"${t.occurredAt}","${t.type}","${t.amount}","${t.currency}","${t.categoryName || ""}","${(t.note || "").replace(/"/g, '""')}"`
-  );
+  const rows = transactions.map((t) => {
+    const cells = [
+      sanitizeCsvCell(t.occurredAt),
+      sanitizeCsvCell(t.type),
+      sanitizeCsvCell(t.amount),
+      sanitizeCsvCell(t.currency),
+      sanitizeCsvCell(t.categoryName || ""),
+      sanitizeCsvCell(t.note || ""),
+    ];
+    return cells.map((cell) => `"${cell}"`).join(",");
+  });
   return [header, ...rows].join("\n");
 }
 
@@ -460,10 +589,15 @@ function makeDate(year: number, month: number, day: number): string {
   return `${year}-${mm}-${dd}T12:00:00.000Z`;
 }
 
-export async function loadSampleData(): Promise<void> {
+export async function loadSampleData(): Promise<boolean> {
   const database = await getDb();
+  const existingTxCount = await database.select<Array<{ count: number }>>(
+    "SELECT COUNT(*) as count FROM transactions"
+  );
+  if (Number(existingTxCount[0]?.count || 0) > 0) return false;
+
   const categories = await database.select<Category[]>("SELECT * FROM categories");
-  if (categories.length === 0) return;
+  if (categories.length === 0) return false;
 
   const catMap = new Map(categories.map((c) => [c.name, c.id]));
   const now = new Date();
@@ -491,4 +625,5 @@ export async function loadSampleData(): Promise<void> {
   for (const txn of sampleTransactions) {
     await createTransaction(txn);
   }
+  return true;
 }
