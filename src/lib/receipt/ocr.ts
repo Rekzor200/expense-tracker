@@ -31,8 +31,10 @@ async function getWorker(): Promise<Worker> {
     worker = await createWorker("ron+eng");
     return worker;
   } catch (err) {
+    const details =
+      err instanceof Error ? err.message : typeof err === "string" ? err : "unknown error";
     throw new Error(
-      `Failed to initialize OCR. Check your internet connection for the first-time setup. (${String(err)})`
+      `Failed to initialize OCR. Check your internet connection for the first-time setup. (${details})`
     );
   }
 }
